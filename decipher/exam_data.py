@@ -33,6 +33,13 @@ class Diagnosis(str, Enum):
     Hist80833 = "80833"
     Hist81403 = "81403"
     Hist82103 = "82103"
+    Hist10700 = "10700"
+    Hist21000 = "21000"
+    Hist79350 = "79350"
+    Hist86666 = "86666"
+    Hist9010 = "9010"
+    Hist9500 = "9500"
+    Hist99 = "99"
     # HPV common
     HPVNegative = "negativ"
     HPVPositive = "positiv"
@@ -83,6 +90,14 @@ risk_mapping = {
     Diagnosis.Hist80833: 4,
     Diagnosis.Hist81403: 4,
     Diagnosis.Hist82103: 4,
+    #
+    Diagnosis.Hist10700: 0,
+    Diagnosis.Hist21000: 0,
+    Diagnosis.Hist79350: 0,
+    Diagnosis.Hist86666: 0,
+    Diagnosis.Hist9010: 0,
+    Diagnosis.Hist9500: 0,
+    Diagnosis.Hist99: 0,
     ##
     # HPV is not mapped to a risk
     Diagnosis.HPVNegative: None,
