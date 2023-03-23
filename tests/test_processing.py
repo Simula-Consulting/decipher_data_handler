@@ -10,6 +10,7 @@ from decipher.processing.pipeline import (
     read_raw_df,
     write_to_csv,
 )
+from decipher.processing.transformers import PersonStats
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,16 @@ def test_read_and_pipeline():
 
     pipeline = exam_pipeline(birthday_file=test_data_dob, drop_missing_birthday=True)
     pipeline.fit_transform(raw)
+
+
+def test_person_stats():
+    raw = read_raw_df(test_data_screening)
+
+    pipeline = exam_pipeline(birthday_file=test_data_dob, drop_missing_birthday=True)
+    exams = pipeline.fit_transform(raw)
+
+    person_df = PersonStats().fit_transform(exams)
+    logger.debug(f"Person df:\n {person_df}")
 
 
 def test_read_from_csv(tmp_path: Path):

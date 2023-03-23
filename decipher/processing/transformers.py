@@ -171,3 +171,35 @@ class RiskAdder(BaseEstimator, TransformerMixin):
             .astype("Int64")
         )
         return X
+
+
+class PersonStats(BaseEstimator, TransformerMixin):
+    """Take an exam DF, and generate stats per person"""
+
+    def fit(self, X: pd.DataFrame, y=None):
+        CleanData(
+            dtypes={
+                "PID": "int",
+                "exam_type": None,
+                "exam_date": "datetime64[ns]",
+                "age": "timedelta64[ns]",
+            }
+        ).fit(X)
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        person_df = X.groupby("PID")[["age", "risk"]].agg(["min", "max", "mean"])
+        person_df.columns = [
+            "_".join(column) for column in person_df.columns
+        ]  # type: ignore # Flatten columns
+        person_df = person_df.join(X.groupby("PID").agg("first"), on="PID")
+        count_per_person_per_exam_type = (
+            X.groupby("exam_type", as_index=False)["PID"]  # type: ignore[operator]
+            .value_counts()
+            .pivot(index="PID", columns="exam_type", values="count")
+        )
+        count_per_person_per_exam_type.columns = [
+            f"{col}_count" for col in count_per_person_per_exam_type.columns
+        ]
+        person_df = person_df.join(count_per_person_per_exam_type, on="PID")
+        return person_df
