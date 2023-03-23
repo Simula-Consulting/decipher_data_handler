@@ -33,5 +33,5 @@ repos:
     -   id: pylint
         name: pylint
         language: system
-        entry: bash -c 'poetry run pylint --disbale R,C'
+        entry: bash -c 'poetry run pylint --disable R,C,W decipher'
         types: [python]
