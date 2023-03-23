@@ -1,5 +1,6 @@
 import logging
 from functools import partial
+from importlib.metadata import version
 from pathlib import Path
 
 import pandas as pd
@@ -58,6 +59,7 @@ def read_from_csv(path: Path, df_reader=None) -> tuple[pd.DataFrame, dict]:
 def write_to_csv(path: Path, df: pd.DataFrame, metadata: dict, **pd_kwargs) -> None:
     if path.exists():
         logger.warning(f"{path} exists, overwriting!")
+    metadata = {"decipher_version": version("decipher")} | metadata
     metadata_yaml = yaml.dump(metadata).split("\n")
     with open(path, "w") as file:
         # Add a '# ' to the beginning of each line
