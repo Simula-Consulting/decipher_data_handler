@@ -1,3 +1,6 @@
+# ---
+# version: 0
+# ---
 ,PID,cytMorfologi,cytDate,histMorfologi,histDate,hpvResultat,hpvDate
 0,1,AGUS,2014-10-22,,,,
 1,1,LSIL,2013-11-24,,,,
