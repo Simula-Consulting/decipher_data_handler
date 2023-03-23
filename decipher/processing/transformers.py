@@ -59,15 +59,19 @@ class BirthdateAdder(BaseEstimator, TransformerMixin):
         self.birthday_file = birthday_file
         self.drop_missing = drop_missing
         """Drop people with missing birth date"""
-        self.dob_data = (
+        self.dob_data: pd.Series | None = None
+
+    def fit(self, X: pd.DataFrame, y=None):
+        self.dob_data = self.dob_data or (
             pd.read_csv(
-                self.birthday_file, dtype={"STATUS": "category"}, parse_dates=["FOEDT"]
+                self.birthday_file,
+                dtype={"STATUS": "category"},
+                parse_dates=["FOEDT"],
+                dayfirst=True,
             )
             .query("STATUS == 'B'")  # Take only rows giving birth data
             .set_index("PID")["FOEDT"]
         )
-
-    def fit(self, X: pd.DataFrame, y=None):
         return self
 
     def transform(self, X) -> pd.DataFrame:
