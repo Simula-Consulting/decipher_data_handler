@@ -203,3 +203,29 @@ class PersonStats(BaseEstimator, TransformerMixin):
         ]
         person_df = person_df.join(count_per_person_per_exam_type, on="PID")
         return person_df
+
+
+class HPVResults(BaseEstimator, TransformerMixin):
+    """Take an exam DF, and generate HPV results"""
+
+    def fit(self, X: pd.DataFrame, y=None):
+        CleanData(
+            dtypes={"PID": "int64", "hpvTesttype": None, "hpvDate": "datetime64[ns]"}
+        ).fit(X)
+        self.hpv_genotype_columns = [
+            col for col in X.columns if col.endswith("Genotype")
+        ]
+        if not self.hpv_genotype_columns:
+            raise ValueError("There are no Genotype columns!")
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        return (
+            X.dropna(subset="hpvDate")
+            .reset_index(names="exam_index")
+            .melt(
+                id_vars=["PID", "exam_index", "hpvTesttype", "hpvDate"],
+                value_vars=self.hpv_genotype_columns,
+            )
+            .dropna()
+        )

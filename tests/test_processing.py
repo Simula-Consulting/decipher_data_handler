@@ -10,7 +10,7 @@ from decipher.processing.pipeline import (
     read_raw_df,
     write_to_csv,
 )
-from decipher.processing.transformers import PersonStats
+from decipher.processing.transformers import HPVResults, PersonStats
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,12 @@ def test_person_stats():
 
     person_df = PersonStats().fit_transform(exams)
     logger.debug(f"Person df:\n {person_df}")
+
+
+def test_hpv_results():
+    raw = read_raw_df(test_data_screening)
+    hpv_df = HPVResults().fit_transform(raw)
+    logger.debug(f"HPV DF:\n{hpv_df.head()}")
 
 
 def test_read_from_csv(tmp_path: Path):
