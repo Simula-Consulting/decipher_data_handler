@@ -31,6 +31,7 @@ def read_raw_df(
         "cytMorfologi": "category",
         "histMorfologi": "Int64",
         "hpvResultat": "category",
+        "histTopografi": "category",  # We don't use this column
     } | {f"hpv{i}Genotype": "category" for i in range(1, 6)}
     datetime_cols = datetime_cols or ["hpvDate", "cytDate", "histDate"]
 
