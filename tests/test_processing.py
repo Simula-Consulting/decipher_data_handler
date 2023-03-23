@@ -1,4 +1,5 @@
 import logging
+from importlib.metadata import version
 from pathlib import Path
 
 import pandas as pd
@@ -78,4 +79,6 @@ def test_write_to_csv(tmp_path: Path):
     write_to_csv(data_file, df=df, metadata=metadata)
     with open(data_file) as file:
         logger.debug(f"Current file content: {file.read()}")
-    assert read_from_csv(data_file)[1] == metadata
+    assert read_from_csv(data_file)[1] == metadata | {
+        "decipher_version": version("decipher")
+    }
