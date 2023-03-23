@@ -7,7 +7,13 @@ import pandas as pd
 import yaml
 from sklearn.pipeline import Pipeline
 
-from decipher.processing.transformers import AgeAdder, BirthdateAdder, CleanData, ToExam
+from decipher.processing.transformers import (
+    AgeAdder,
+    BirthdateAdder,
+    CleanData,
+    RiskAdder,
+    ToExam,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +92,7 @@ def exam_pipeline(birthday_file: Path, drop_missing_birthday: bool = False) -> P
             ),
             ("wide_to_long", ToExam()),
             ("age_adder", AgeAdder(date_field="exam_date", birth_field="FOEDT")),
+            ("risk_mapper", RiskAdder()),
         ],
         verbose=True,
     )

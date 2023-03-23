@@ -1,11 +1,12 @@
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from decipher.exam_data import Diagnosis, ExamTypes
+from decipher.exam_data import Diagnosis, ExamTypes, risk_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 class CleanData(BaseEstimator, TransformerMixin):
     """Check that data has the expected columns on the correct data type"""
 
-    def __init__(self, dtypes: dict[str, str] | None = None) -> None:
+    def __init__(self, dtypes: dict[str, Any] | None = None) -> None:
         self.dtypes = dtypes or {
             "cytMorfologi": "category",
             "histMorfologi": "Int64",
@@ -33,7 +34,7 @@ class CleanData(BaseEstimator, TransformerMixin):
         for column in required_columns:
             if (expected_type := self.dtypes[column]) != (
                 actual_type := X.dtypes[column]
-            ):
+            ) and expected_type is not None:
                 raise ValueError(
                     f"Column {column} must have dtype {expected_type}, but it is {actual_type}"
                 )
@@ -153,4 +154,20 @@ class AgeAdder(BaseEstimator, TransformerMixin):
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
         X[self.age_field] = X[self.date_field] - X[self.birth_field]
+        return X
+
+
+class RiskAdder(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        if "exam_diagnosis" not in X:
+            raise ValueError("No exam diagnosis! Is this an exam DF?")
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        X = X.copy()
+        X["risk"] = (
+            X["exam_diagnosis"]
+            .transform(lambda diagnosis: risk_mapping[diagnosis])
+            .astype("Int64")
+        )
         return X
