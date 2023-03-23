@@ -75,8 +75,11 @@ class BirthdateAdder(BaseEstimator, TransformerMixin):
         if X["FOEDT"].isna().any():
             if not self.drop_missing:
                 raise ValueError("Some people are missing birth info!")
+            number_missing_birth_data = X[X["FOEDT"].isna()]["PID"].nunique()
+            logger.warning(
+                f"{number_missing_birth_data} people are missing birth info!"
+            )
             X = X.dropna(subset="FOEDT")
-            logger.warning("Some people are missing birth info!")
         return X
 
 
