@@ -43,6 +43,21 @@ def test_person_stats():
 
     person_df = PersonStats().fit_transform(exams)
     logger.debug(f"Person df:\n {person_df}")
+    logger.debug(f"Person df columns: {list(person_df.columns)}")
+
+    expected_columns = {
+        "age_min",
+        "age_max",
+        "age_mean",
+        "risk_min",
+        "risk_max",
+        "risk_mean",
+        "FOEDT",
+        "cytology_count",
+        "histology_count",
+        "HPV_count",
+    }
+    assert set(person_df.columns) == expected_columns
 
 
 def test_hpv_results():

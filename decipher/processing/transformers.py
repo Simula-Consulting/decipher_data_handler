@@ -199,7 +199,7 @@ class PersonStats(BaseEstimator, TransformerMixin):
         person_df.columns = [
             "_".join(column) for column in person_df.columns
         ]  # type: ignore # Flatten columns
-        person_df = person_df.join(X.groupby("PID").agg("first"), on="PID")
+        person_df = person_df.join(X.groupby("PID")["FOEDT"].agg("first"), on="PID")
         count_per_person_per_exam_type = (
             X.groupby("exam_type", as_index=False)["PID"]  # type: ignore[operator]
             .value_counts()
