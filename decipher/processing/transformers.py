@@ -217,7 +217,7 @@ class PersonStats(BaseEstimator, TransformerMixin):
 
 
 class HPVResults(BaseEstimator, TransformerMixin):
-    """Take an exam DF, and generate HPV results
+    """Take a raw DF, and generate HPV results
 
     Warning:
       HPV negative and hpv non-conclusive are _not_ included!!!
