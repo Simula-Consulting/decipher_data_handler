@@ -24,8 +24,8 @@ jobs:
       id: build
       run: poetry build --format wheel && echo version=$(poetry version -s) >> "$GITHUB_OUTPUT"
     - name: release
-      uses: ncipollo/release-action@v1
       id: create_release
+      uses: ncipollo/release-action@v1
       with:
         release_name: ${{ steps.build.outputs.version }}
         artifacts: "dist/*.whl"
