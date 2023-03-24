@@ -231,8 +231,8 @@ class HPVResults(BaseEstimator, TransformerMixin):
             X.dropna(subset="hpvDate")
             .reset_index(names="exam_index")
             .melt(
-                id_vars=["PID", "exam_index", "hpvTesttype", "hpvDate"],
+                id_vars=["PID", "hpvResultat", "exam_index", "hpvTesttype", "hpvDate"],
                 value_vars=self.hpv_genotype_columns,
             )
-            .dropna()
+            .dropna(subset="value")
         )
