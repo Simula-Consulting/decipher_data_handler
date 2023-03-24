@@ -11,6 +11,7 @@ from decipher.processing.transformers import (
     AgeAdder,
     BirthdateAdder,
     CleanData,
+    HPVResults,
     RiskAdder,
     ToExam,
 )
@@ -79,9 +80,10 @@ def write_to_csv(path: Path, df: pd.DataFrame, metadata: dict, **pd_kwargs) -> N
     df.to_csv(path, mode="a", **pd_kwargs)
 
 
-def get_exam_pipeline(
+def get_base_pipeline(
     birthday_file: Path, drop_missing_birthday: bool = False
 ) -> Pipeline:
+    """Base pipeline for reading from raw"""
     if not birthday_file.exists():
         raise ValueError(f"{birthday_file} does not exist!")
     return Pipeline(
@@ -93,9 +95,43 @@ def get_exam_pipeline(
                     birthday_file=birthday_file, drop_missing=drop_missing_birthday
                 ),
             ),
+        ]
+    )
+
+
+def get_exam_pipeline(
+    base_pipeline: Pipeline | None = None,
+    birthday_file: Path | None = None,
+    drop_missing_birthday: bool = False,
+) -> Pipeline:
+    if base_pipeline is None:
+        if birthday_file is None:
+            raise ValueError(
+                "You must supply a birthday_file when base_pipeline is None"
+            )
+        base_pipeline = get_base_pipeline(
+            birthday_file=birthday_file, drop_missing_birthday=drop_missing_birthday
+        )
+    elif birthday_file is not None:
+        logger.warning(
+            "A pipeline and birthday_file was supplied."
+            "The birthday file will be ignored."
+        )
+    return Pipeline(
+        [
+            ("base_pipeline", base_pipeline),
             ("wide_to_long", ToExam()),
             ("age_adder", AgeAdder(date_field="exam_date", birth_field="FOEDT")),
             ("risk_mapper", RiskAdder()),
         ],
         verbose=True,
+    )
+
+
+def get_hpv_pipeline(base_pipeline: Pipeline) -> Pipeline:
+    return Pipeline(
+        [
+            ("base_pipeline", base_pipeline),
+            ("hpv_results", HPVResults()),
+        ]
     )

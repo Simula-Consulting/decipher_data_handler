@@ -6,7 +6,9 @@ import pandas as pd
 import pytest
 
 from decipher.processing.pipeline import (
+    get_base_pipeline,
     get_exam_pipeline,
+    get_hpv_pipeline,
     read_from_csv,
     read_raw_df,
     write_to_csv,
@@ -20,21 +22,34 @@ test_data_screening = test_data_base / "test_screening_data.csv"
 test_data_dob = test_data_base / "test_dob_data.csv"
 
 
-def test_read_and_pipeline():
+def test_read_and_exam_pipeline():
     """Simply try reading and running pipeline"""
     raw = read_raw_df(test_data_screening)
 
     # This should fail as we have people with missing birth data
     with pytest.raises(ValueError):
-        pipeline = get_exam_pipeline(
+        exam_pipeline = get_exam_pipeline(
             birthday_file=test_data_dob, drop_missing_birthday=False
         )
-        pipeline.fit_transform(raw)
+        exam_pipeline.fit_transform(raw)
 
-    pipeline = get_exam_pipeline(
+    exam_pipeline = get_exam_pipeline(
         birthday_file=test_data_dob, drop_missing_birthday=True
     )
-    pipeline.fit_transform(raw)
+    exam_df = exam_pipeline.fit_transform(raw)
+    logger.debug(exam_df)
+
+
+def test_read_and_hpv_pipeline():
+    """Simply try reading and running pipeline"""
+    raw = read_raw_df(test_data_screening)
+
+    base_pipeline = get_base_pipeline(
+        birthday_file=test_data_dob, drop_missing_birthday=True
+    )
+    hpv_pipeline = get_hpv_pipeline(base_pipeline=base_pipeline)
+    hpv_df = hpv_pipeline.fit_transform(raw)
+    logger.debug(hpv_df)
 
 
 def test_person_stats():

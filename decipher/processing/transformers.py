@@ -243,4 +243,4 @@ class HPVResults(BaseEstimator, TransformerMixin):
                 value_vars=self.hpv_genotype_columns,
             )
             .dropna(subset="value")
-        )
+        ).astype({"variable": "category", "value": "category"})
