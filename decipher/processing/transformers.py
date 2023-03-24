@@ -217,7 +217,11 @@ class PersonStats(BaseEstimator, TransformerMixin):
 
 
 class HPVResults(BaseEstimator, TransformerMixin):
-    """Take an exam DF, and generate HPV results"""
+    """Take an exam DF, and generate HPV results
+
+    Warning:
+      HPV negative and hpv non-conclusive are _not_ included!!!
+    """
 
     def fit(self, X: pd.DataFrame, y=None):
         CleanData(
