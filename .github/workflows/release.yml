@@ -27,5 +27,6 @@ jobs:
       id: create_release
       uses: ncipollo/release-action@v1
       with:
-        release_name: ${{ steps.build.outputs.version }}
+        name: ${{ steps.build.outputs.version }}
+        tag: ${{ steps.build.outputs.version }}
         artifacts: "dist/*.whl"
