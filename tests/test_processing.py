@@ -13,7 +13,7 @@ from decipher.processing.pipeline import (
     read_raw_df,
     write_to_csv,
 )
-from decipher.processing.transformers import HPVResults, PersonStats
+from decipher.processing.transformers import HPVResults, ObservationMatrix, PersonStats
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,25 @@ def test_read_and_hpv_pipeline():
     hpv_pipeline = get_hpv_pipeline(base_pipeline=base_pipeline)
     hpv_df = hpv_pipeline.fit_transform(raw)
     logger.debug(hpv_df)
+
+
+def test_observation_out():
+    raw = read_raw_df(test_data_screening)
+
+    exam_pipeline = get_exam_pipeline(
+        birthday_file=test_data_dob, drop_missing_birthday=True
+    )
+    exam_df = exam_pipeline.fit_transform(raw)
+    observations = ObservationMatrix().fit_transform(exam_df)
+    logger.info(observations)
+
+    assert {"bin", "row", "risk"} == set(observations)
+    # Assert only one risk per person per time
+    assert observations.value_counts(subset=["row", "bin"]).unique() == [1]
+
+    bins_intervals = observations["bin"].cat.categories
+    assert bins_intervals[0].left <= exam_df["age"].min()
+    assert bins_intervals[-1].right > exam_df["age"].max()
 
 
 def test_person_stats():

@@ -1,8 +1,10 @@
 import logging
+from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -244,3 +246,41 @@ class HPVResults(BaseEstimator, TransformerMixin):
             )
             .dropna(subset="value")
         ).astype({"variable": "category", "value": "category"})
+
+
+class ObservationMatrix(BaseEstimator, TransformerMixin):
+    """Convert exams df to observations"""
+
+    def __init__(
+        self, risk_agg_method: str | Callable = "max", months_per_bin: float = 3
+    ):
+        self.risk_agg_method = risk_agg_method
+        self.months_per_bin = months_per_bin
+        super().__init__()
+
+    def fit(self, X: pd.DataFrame, y=None):
+        CleanData(dtypes={"PID": "int64", "age": "timedelta64[ns]", "risk": "Int64"})
+        # Create a mapping between row in matrix and PID
+        pids = X["PID"].unique()
+        self.pid_to_row = {pid: i for i, pid in enumerate(pids)}
+
+        # Make the time bins
+        days_per_month = 30
+        bin_width = timedelta(days=self.months_per_bin * days_per_month)
+        self.bins: npt.NDArray = np.arange(
+            X["age"].min(),
+            X["age"].max() + bin_width,  # Add to ensure endpoint is included
+            bin_width,
+        )
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        out = X[["risk"]]
+        out["row"] = X["PID"].apply(lambda pid: self.pid_to_row[pid])
+        out["bin"] = pd.cut(
+            X["age"], self.bins, right=False
+        )  # type: ignore[call-overload]  # right=False indicates close left side
+
+        return out.groupby(["row", "bin"], as_index=False)["risk"].agg(
+            self.risk_agg_method
+        )  # type: ignore[return-value]  # as_index=False makes this a DataFrame
