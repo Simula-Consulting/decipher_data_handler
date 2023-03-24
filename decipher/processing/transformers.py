@@ -62,15 +62,19 @@ class BirthdateAdder(BaseEstimator, TransformerMixin):
         self.dob_data: pd.Series | None = None
 
     def fit(self, X: pd.DataFrame, y=None):
-        self.dob_data = self.dob_data or (
-            pd.read_csv(
-                self.birthday_file,
-                dtype={"STATUS": "category"},
-                parse_dates=["FOEDT"],
-                dayfirst=True,
+        self.dob_data = (
+            (
+                pd.read_csv(
+                    self.birthday_file,
+                    dtype={"STATUS": "category"},
+                    parse_dates=["FOEDT"],
+                    dayfirst=True,
+                )
+                .query("STATUS == 'B'")  # Take only rows giving birth data
+                .set_index("PID")["FOEDT"]
             )
-            .query("STATUS == 'B'")  # Take only rows giving birth data
-            .set_index("PID")["FOEDT"]
+            if self.dob_data is None
+            else self.dob_data
         )
         return self
 
