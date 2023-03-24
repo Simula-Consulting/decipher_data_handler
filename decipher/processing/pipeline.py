@@ -79,7 +79,9 @@ def write_to_csv(path: Path, df: pd.DataFrame, metadata: dict, **pd_kwargs) -> N
     df.to_csv(path, mode="a", **pd_kwargs)
 
 
-def exam_pipeline(birthday_file: Path, drop_missing_birthday: bool = False) -> Pipeline:
+def get_exam_pipeline(
+    birthday_file: Path, drop_missing_birthday: bool = False
+) -> Pipeline:
     if not birthday_file.exists():
         raise ValueError(f"{birthday_file} does not exist!")
     return Pipeline(

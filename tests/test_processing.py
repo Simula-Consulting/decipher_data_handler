@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from decipher.processing.pipeline import (
-    exam_pipeline,
+    get_exam_pipeline,
     read_from_csv,
     read_raw_df,
     write_to_csv,
@@ -26,19 +26,23 @@ def test_read_and_pipeline():
 
     # This should fail as we have people with missing birth data
     with pytest.raises(ValueError):
-        pipeline = exam_pipeline(
+        pipeline = get_exam_pipeline(
             birthday_file=test_data_dob, drop_missing_birthday=False
         )
         pipeline.fit_transform(raw)
 
-    pipeline = exam_pipeline(birthday_file=test_data_dob, drop_missing_birthday=True)
+    pipeline = get_exam_pipeline(
+        birthday_file=test_data_dob, drop_missing_birthday=True
+    )
     pipeline.fit_transform(raw)
 
 
 def test_person_stats():
     raw = read_raw_df(test_data_screening)
 
-    pipeline = exam_pipeline(birthday_file=test_data_dob, drop_missing_birthday=True)
+    pipeline = get_exam_pipeline(
+        birthday_file=test_data_dob, drop_missing_birthday=True
+    )
     exams = pipeline.fit_transform(raw)
 
     person_df = PersonStats().fit_transform(exams)
