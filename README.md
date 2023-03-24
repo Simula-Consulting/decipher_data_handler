@@ -71,3 +71,15 @@ metadata['notes'].append("Fixed xxx")
 write_to_csv(data_path, df=df, metadata=metadata)
 ```
 Note that the `decipher` version will always be written to the metadata.
+
+## Other tips and notes
+
+### Debugging info in tests
+
+Add
+```toml
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "DEBUG"
+```
+to the `pyproject.toml` to get debugging details when running the tests.
