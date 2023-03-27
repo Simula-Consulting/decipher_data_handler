@@ -276,7 +276,7 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         out = X[["risk"]]
-        out["row"] = X["PID"].apply(lambda pid: self.pid_to_row[pid])
+        out["row"] = X["PID"].map(self.pid_to_row)
         out["bin"] = pd.cut(
             X["age"], self.bins, right=False
         )  # type: ignore[call-overload]  # right=False indicates close left side
