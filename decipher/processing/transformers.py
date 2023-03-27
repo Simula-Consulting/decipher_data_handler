@@ -189,6 +189,9 @@ class RiskAdder(BaseEstimator, TransformerMixin):
 class PersonStats(BaseEstimator, TransformerMixin):
     """Take an exam DF, and generate stats per person"""
 
+    def __init__(self, base_df: pd.DataFrame | None = None) -> None:
+        self.base_df = base_df
+
     def fit(self, X: pd.DataFrame, y=None):
         CleanData(
             dtypes={
@@ -215,7 +218,22 @@ class PersonStats(BaseEstimator, TransformerMixin):
             f"{col}_count" for col in count_per_person_per_exam_type.columns
         ]
         person_df = person_df.join(count_per_person_per_exam_type, on="PID")
+
+        if self.base_df is not None:
+            person_df = person_df.join(self._get_hpv_features())
         return person_df
+
+    def _get_hpv_features(self) -> pd.DataFrame:
+        if self.base_df is None:
+            raise ValueError()
+        feature_df = pd.DataFrame(
+            index=self.base_df["PID"].unique(), columns=["has_positive", "has_negative"]
+        )
+        positives = self.base_df.query("hpvResultat == 'positiv'")["PID"].unique()
+        negatives = self.base_df.query("hpvResultat == 'negativ'")["PID"].unique()
+        feature_df.loc[positives, "has_positive"] = 1
+        feature_df.loc[negatives, "has_negative"] = 1
+        return feature_df
 
 
 class HPVResults(BaseEstimator, TransformerMixin):

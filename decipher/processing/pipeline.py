@@ -12,6 +12,7 @@ from decipher.processing.transformers import (
     BirthdateAdder,
     CleanData,
     HPVResults,
+    ObservationMatrix,
     RiskAdder,
     ToExam,
 )
@@ -134,4 +135,38 @@ def get_hpv_pipeline(base_pipeline: Pipeline) -> Pipeline:
             ("base_pipeline", base_pipeline),
             ("hpv_results", HPVResults()),
         ]
+    )
+
+
+def get_observations_pipeline(
+    exam_pipeline: Pipeline | None = None,
+    birthday_file: Path | None = None,
+    drop_missing_birthday: bool = False,
+    risk_agg_method: str = "max",
+    months_per_bin: float = 3,
+) -> Pipeline:
+    if exam_pipeline is None:
+        if birthday_file is None:
+            raise ValueError(
+                "You must supply a birthday_file when base_pipeline is None"
+            )
+        exam_pipeline = get_exam_pipeline(
+            birthday_file=birthday_file, drop_missing_birthday=drop_missing_birthday
+        )
+    elif birthday_file is not None:
+        logger.warning(
+            "A pipeline and birthday_file was supplied."
+            "The birthday file will be ignored."
+        )
+    return Pipeline(
+        [
+            ("exam_pipeline", exam_pipeline),
+            (
+                "observations",
+                ObservationMatrix(
+                    months_per_bin=months_per_bin, risk_agg_method=risk_agg_method
+                ),
+            ),
+        ],
+        verbose=True,
     )

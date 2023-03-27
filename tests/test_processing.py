@@ -98,6 +98,37 @@ def test_person_stats():
     assert set(person_df.columns) == expected_columns
 
 
+def test_person_stats_w_features():
+    raw = read_raw_df(test_data_screening)
+
+    base_pipeline = get_base_pipeline(
+        birthday_file=test_data_dob, drop_missing_birthday=True
+    )
+    pipeline = get_exam_pipeline(base_pipeline=base_pipeline)
+    base_df = base_pipeline.fit_transform(raw)
+    exams = pipeline.fit_transform(raw)
+
+    person_df = PersonStats(base_df=base_df).fit_transform(exams)
+    logger.debug(f"Person df:\n {person_df}")
+    logger.debug(f"Person df columns: {list(person_df.columns)}")
+
+    expected_columns = {
+        "age_min",
+        "age_max",
+        "age_mean",
+        "risk_min",
+        "risk_max",
+        "risk_mean",
+        "FOEDT",
+        "cytology_count",
+        "histology_count",
+        "HPV_count",
+        "has_positive",
+        "has_negative",
+    }
+    assert set(person_df.columns) == expected_columns
+
+
 def test_hpv_results():
     raw = read_raw_df(test_data_screening)
     hpv_df = HPVResults().fit_transform(raw)
