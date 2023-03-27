@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import numpy.typing as npt
@@ -15,16 +16,20 @@ from decipher.processing.transformers import (
     ToExam,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class DataManager:
     def __init__(self, screening_path: Path, dob_path: Path) -> None:
         raw_data = read_raw_df(screening_data_path=screening_path)
+        logger.debug("Read raw data")
 
         self.base_pipeline = get_base_pipeline(
             birthday_file=dob_path, drop_missing_birthday=True
         )
 
         base_df = self.base_pipeline.fit_transform(raw_data)
+        logger.debug("Got base DF")
         exams = Pipeline(
             [
                 ("wide_to_long", ToExam()),
@@ -33,11 +38,14 @@ class DataManager:
             ],
             verbose=True,
         ).fit_transform(base_df)
+        logger.debug("Got exams DF")
         self.observation_data_transformer = ObservationMatrix()
         self.screening_data: pd.DataFrame = (
             self.observation_data_transformer.fit_transform(exams)
         )
+        logger.debug("Got observations DF")
         self.person_df: pd.DataFrame = PersonStats(base_df=base_df).fit_transform(exams)
+        logger.debug("Got person DF")
 
     def shape(self) -> tuple[int, int]:
         n_rows = self.screening_data["row"].max() + 1
