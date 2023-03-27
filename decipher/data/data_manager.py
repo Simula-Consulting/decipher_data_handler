@@ -25,7 +25,7 @@ class DataManager:
         )
 
         base_df = self.base_pipeline.fit_transform(raw_data)
-        self.exams = Pipeline(
+        exams = Pipeline(
             [
                 ("wide_to_long", ToExam()),
                 ("age_adder", AgeAdder(date_field="exam_date", birth_field="FOEDT")),
@@ -35,11 +35,9 @@ class DataManager:
         ).fit_transform(base_df)
         self.observation_data_transformer = ObservationMatrix()
         self.screening_data: pd.DataFrame = (
-            self.observation_data_transformer.fit_transform(self.exams)
+            self.observation_data_transformer.fit_transform(exams)
         )
-        self.person_df: pd.DataFrame = PersonStats(base_df=base_df).fit_transform(
-            self.exams
-        )
+        self.person_df: pd.DataFrame = PersonStats(base_df=base_df).fit_transform(exams)
 
     def shape(self) -> tuple[int, int]:
         n_rows = self.screening_data["row"].max() + 1

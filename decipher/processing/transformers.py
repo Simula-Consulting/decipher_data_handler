@@ -293,12 +293,15 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        out = X[["risk"]]
-        out["row"] = X["PID"].map(self.pid_to_row)
-        out["bin"] = pd.cut(
-            X["age"], self.bins, right=False
-        )  # type: ignore[call-overload]  # right=False indicates close left side
-
+        out = pd.DataFrame(
+            {
+                "risk": X["risk"],
+                "row": X["PID"].map(self.pid_to_row),
+                "bin": pd.cut(
+                    X["age"], self.bins, right=False
+                ),  # type: ignore[call-overload]  # right=False indicates close left side
+            }
+        )
         return out.groupby(["row", "bin"], as_index=False)["risk"].agg(
             self.risk_agg_method
         )  # type: ignore[return-value]  # as_index=False makes this a DataFrame
