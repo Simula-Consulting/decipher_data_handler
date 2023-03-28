@@ -72,6 +72,25 @@ write_to_csv(data_path, df=df, metadata=metadata)
 ```
 Note that the `decipher` version will always be written to the metadata.
 
+## Install
+
+## Parquet support
+For loading and dumping to the [Parquet format](https://parquet.apache.org/), `pyarrow` or `fastparquet` is needed.
+They may be installed by
+```bash
+pip install decipher.whl[pyarrow]
+# or
+pip install decipher.whl[fastparquet]
+```
+if using pip from the wheel.
+From Poetry, do
+```bash
+poetry install -E <pyarrow|fastparquet>
+```
+
+
+Note that, at the moment, `pyarrow` is the only we guarantee support for.
+
 ## Other tips and notes
 
 ### Debugging info in tests
