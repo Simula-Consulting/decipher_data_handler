@@ -280,7 +280,7 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
         CleanData(dtypes={"PID": "int64", "age": "timedelta64[ns]", "risk": "Int64"})
         # Create a mapping between row in matrix and PID
         pids = X["PID"].unique()
-        self.pid_to_row = {pid: i for i, pid in enumerate(pids)}
+        self.pid_to_row: dict[int, int] = {pid: i for i, pid in enumerate(pids)}
 
         # Make the time bins
         days_per_month = 30
@@ -302,6 +302,9 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
                 ),  # type: ignore[call-overload]  # right=False indicates close left side
             }
         )
-        return out.groupby(["row", "bin"], as_index=False)["risk"].agg(
+        # The observed=True is important!
+        # As the bin is categorical, observed=False will produce a cartesian product
+        # between all possible bins and all rows. This eats up a lot of memory!
+        return out.groupby(["row", "bin"], as_index=False, observed=True)["risk"].agg(
             self.risk_agg_method
         )  # type: ignore[return-value]  # as_index=False makes this a DataFrame
