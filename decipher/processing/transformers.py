@@ -227,12 +227,14 @@ class PersonStats(BaseEstimator, TransformerMixin):
         if self.base_df is None:
             raise ValueError()
         feature_df = pd.DataFrame(
-            index=self.base_df["PID"].unique(), columns=["has_positive", "has_negative"]
+            index=self.base_df["PID"].unique(),
+            columns=["has_positive", "has_negative"],
+            dtype="boolean",
         )
         positives = self.base_df.query("hpvResultat == 'positiv'")["PID"].unique()
         negatives = self.base_df.query("hpvResultat == 'negativ'")["PID"].unique()
-        feature_df.loc[positives, "has_positive"] = 1
-        feature_df.loc[negatives, "has_negative"] = 1
+        feature_df.loc[positives, "has_positive"] = True
+        feature_df.loc[negatives, "has_negative"] = True
         return feature_df
 
 
@@ -280,7 +282,7 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
         CleanData(dtypes={"PID": "int64", "age": "timedelta64[ns]", "risk": "Int64"})
         # Create a mapping between row in matrix and PID
         pids = X["PID"].unique()
-        self.pid_to_row: dict[int, int] = {pid: i for i, pid in enumerate(pids)}
+        self.pid_to_row: dict[int, int] = {int(pid): i for i, pid in enumerate(pids)}
 
         # Make the time bins
         days_per_month = 30
@@ -298,7 +300,10 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
                 "risk": X["risk"],
                 "row": X["PID"].map(self.pid_to_row),
                 "bin": pd.cut(
-                    X["age"], self.bins, right=False
+                    X["age"],
+                    self.bins,
+                    right=False,
+                    labels=False,
                 ),  # type: ignore[call-overload]  # right=False indicates close left side
             }
         )

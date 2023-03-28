@@ -1,5 +1,6 @@
 import logging
 from importlib.metadata import version
+from math import ceil
 from pathlib import Path
 
 import pandas as pd
@@ -66,9 +67,14 @@ def test_observation_out():
     # Assert only one risk per person per time
     assert observations.value_counts(subset=["row", "bin"]).unique() == [1]
 
-    bins_intervals = observations["bin"].cat.categories
-    assert bins_intervals[0].left <= exam_df["age"].min()
-    assert bins_intervals[-1].right > exam_df["age"].max()
+    # Check correct number of bins
+    min_age = exam_df["age"].min()
+    max_age = exam_df["age"].max()
+
+    days_per_month = 30
+    months_per_bin = 3
+    number_of_bins = ceil((max_age - min_age).days / days_per_month / months_per_bin)
+    assert observations["bin"].max() == number_of_bins - 1  # Compensate for 0-indexing
 
 
 def test_person_stats():

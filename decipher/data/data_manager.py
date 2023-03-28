@@ -1,5 +1,8 @@
+import json
 import logging
+from importlib.metadata import version
 from pathlib import Path
+from typing import Literal
 
 import numpy.typing as npt
 import pandas as pd
@@ -17,18 +20,31 @@ from decipher.processing.transformers import (
 )
 
 logger = logging.getLogger(__name__)
+_parquet_engine_types = Literal["auto", "pyarrow", "fastparquet"]
+"""Engine to use for parquet IO."""
+
+
+def _get_base_df(screening_path: Path, dob_path: Path) -> pd.DataFrame:
+    """Read and clean raw data, and add birthday.
+
+    Discussion:
+        We extracted this from the `DataManager.read_from_csv` in order to have
+        the intermediate DataFrames' memory freed as soon as possible.
+    """
+    raw_data = read_raw_df(screening_data_path=screening_path)
+    logger.debug("Read raw data")
+
+    base_pipeline = get_base_pipeline(
+        birthday_file=dob_path, drop_missing_birthday=True
+    )
+
+    return base_pipeline.fit_transform(raw_data)
 
 
 class DataManager:
-    def __init__(self, screening_path: Path, dob_path: Path) -> None:
-        raw_data = read_raw_df(screening_data_path=screening_path)
-        logger.debug("Read raw data")
-
-        self.base_pipeline = get_base_pipeline(
-            birthday_file=dob_path, drop_missing_birthday=True
-        )
-
-        base_df = self.base_pipeline.fit_transform(raw_data)
+    @classmethod
+    def read_from_csv(cls, screening_path: Path, dob_path: Path):
+        base_df = _get_base_df(screening_path, dob_path)
         logger.debug("Got base DF")
         exams = Pipeline(
             [
@@ -39,17 +55,76 @@ class DataManager:
             verbose=True,
         ).fit_transform(base_df)
         logger.debug("Got exams DF")
-        self.observation_data_transformer = ObservationMatrix()
-        self.screening_data: pd.DataFrame = (
-            self.observation_data_transformer.fit_transform(exams)
-        )
+        observation_data_transformer = ObservationMatrix()
+        screening_data: pd.DataFrame = observation_data_transformer.fit_transform(exams)
+        pid_to_row = observation_data_transformer.pid_to_row
         logger.debug("Got observations DF")
-        self.person_df: pd.DataFrame = PersonStats(base_df=base_df).fit_transform(exams)
+        person_df: pd.DataFrame = PersonStats(base_df=base_df).fit_transform(exams)
         logger.debug("Got person DF")
+        return DataManager(
+            screening_data=screening_data, person_df=person_df, pid_to_row=pid_to_row
+        )
+
+    def __init__(
+        self,
+        screening_data: pd.DataFrame,
+        person_df: pd.DataFrame,
+        pid_to_row: dict[int, int],
+    ):
+        self.screening_data = screening_data
+        self.person_df = person_df
+        self.pid_to_row = pid_to_row
+
+    def save_to_parquet(
+        self, directory: Path, engine: _parquet_engine_types = "auto"
+    ) -> None:
+        if not directory.is_dir():
+            raise ValueError()
+        self.screening_data.to_parquet(
+            directory / "screening_data.parquet", engine=engine
+        )
+        self.person_df.to_parquet(directory / "person_df.parquet", engine=engine)
+        with open(directory / "pid_to_row.json", "w") as file:
+            json.dump(self.pid_to_row, file)
+        with open(directory / "metadata.json", "w") as file:
+            json.dump({"decipher_version": version("decipher")}, file)
+
+    @classmethod
+    def from_parquet(
+        cls,
+        directory: Path,
+        engine: _parquet_engine_types = "auto",
+        ignore_decipher_version: bool = False,
+    ) -> "DataManager":
+        if not directory.is_dir():
+            raise ValueError()
+        with open(directory / "metadata.json") as file:
+            metadata = json.load(file)
+        if (file_version := metadata["decipher_version"]) != (
+            current_version := version("decipher")
+        ):
+            message = f"The file you are reading was made with decipher version {file_version}. The current version is {current_version}."
+            if not ignore_decipher_version:
+                raise ValueError(
+                    message + "Set ignore_decipher_version=True to ignore this"
+                )
+            else:
+                logger.warning(message)
+        screening_data = pd.read_parquet(
+            directory / "screening_data.parquet", engine=engine
+        )
+        person_df = pd.read_parquet(directory / "person_df.parquet", engine=engine)
+        with open(directory / "pid_to_row.json") as file:
+            pid_to_row = json.load(file)
+        # json will make the key a str, so explicitly convert to int
+        pid_to_row = {int(key): value for key, value in pid_to_row.items()}
+        return DataManager(
+            screening_data=screening_data, person_df=person_df, pid_to_row=pid_to_row
+        )
 
     def shape(self) -> tuple[int, int]:
         n_rows = self.screening_data["row"].max() + 1
-        n_cols = self.screening_data["bin"].cat.codes.max() + 1
+        n_cols = self.screening_data["bin"].max() + 1
         return (n_rows, n_cols)
 
     def data_as_coo_array(self) -> coo_array:
@@ -57,7 +132,7 @@ class DataManager:
         array = coo_array(
             (
                 clean_screen["risk"],
-                (clean_screen["row"], clean_screen["bin"].cat.codes),
+                (clean_screen["row"], clean_screen["bin"]),
             ),
             shape=self.shape(),
             dtype="int8",
@@ -81,9 +156,7 @@ class DataManager:
         features = (
             self.person_df.reset_index().melt(id_vars="PID", value_vars=cols).dropna()
         )
-        features["row"] = features["PID"].map(
-            self.observation_data_transformer.pid_to_row
-        )
+        features["row"] = features["PID"].map(self.pid_to_row)
         features["col_index"] = features["variable"].map(
             {col: i for i, col in enumerate(cols)}
         )
