@@ -2,75 +2,64 @@
 
 ## Usage
 
-### Read the raw screening data
+### `DataManager`
+While there are many lower level tools, `DataManger` is the simplest interface to use.
+
+**Read from CSVs**
 
 ```python
 from pathlib import Path
-from decipher.processing.pipeline import read_raw_df
+from decipher.data import DataManager
 
-screening_data = Path(<screening_data_path>)
-raw = read_raw_df(screening_data)
+screening_data = Path(<screening data>)
+dob_data = Path(<dob data>)
+
+# Read in from CSV
+data_manager = DataManager.read_from_csv(screening_data, dob_data)
 ```
 
-### Create exams df
+**Read and write with Parquet**
 
 ```python
 from pathlib import Path
-from decipher.processing.pipeline import read_raw_df, exam_pipeline
+from decipher.data import DataManager
 
-screening_data = Path(<screening_data_path>)
-dob_data = Path(<date of birth path>)
-raw = read_raw_df(screening_data)
+screening_data = Path(<screening data>)
+dob_data = Path(<dob data>)
+parquet_dir = Path(<parquet dir>)
 
-pipeline = exam_pipeline(birthday_file=dob_data)
-exams = pipeline.fit_transform(raw)
+# Read in from CSV
+data_manager = DataManager.read_from_csv(screening_data, dob_data)
+
+# Store to Parquet
+data_manager.save_to_parquet(parquet_dir, engine="pyarrow")
+
+# Read from Parquet
+# Will fail if `decipher` version does not match that of stored data
+data_manager = DataManager.from_parquet(parquet_dir, engine="pyarrow")
+
+# See metadata
+data_manager.metadata
 ```
 
-### Get person table with stats
+**Create the observation matrix**
 
 ```python
 from pathlib import Path
-from decipher.processing.pipeline import read_raw_df, exam_pipeline
-from decipher.processing.transformers import PersonStats
+from decipher.data import DataManager
 
-screening_data = Path(<screening_data_path>)
-dob_data = Path(<date of birth path>)
-raw = read_raw_df(screening_data)
+parquet_dir = Path(<parquet dir>)
 
-pipeline = exam_pipeline(birthday_file=dob_data)
-exams = pipeline.fit_transform(raw)
+# Read from Parquet
+data_manager = DataManager.from_parquet(parquet_dir, engine="pyarrow")
 
-person_df = PersonStats().fit_transform(exams)
+# update_inplace updates the data manager, instead of only
+# returning the values
+data_manager.get_screening_data(min_non_hpv_exams=3, update_inplace=True)
+
+# Saving will now also include the computed observation data
+data_manger.save_to_parquet(parquet_dir, engine="pyarrow")
 ```
-
-### Get HPV results
-
-```python
-from pathlib import Path
-from decipher.processing.pipeline import read_raw_df
-from decipher.processing.transformers import HPVResults
-
-screening_data = Path(<screening_data_path>)
-raw = read_raw_df(screening_data)
-
-hpv_df = HPVResults().fit_transform(raw)
-```
-
-### Writing and reading DataFrames with metadata
-
-```python
-from pathlib import Path
-from decipher.processing.pipeline import read_from_csv, write_to_csv
-
-data_path = Path(<data_path>)
-
-df, metadata = read_from_csv(data_path)
-df = do_something(df)
-metadata['notes'].append("Fixed xxx")
-
-write_to_csv(data_path, df=df, metadata=metadata)
-```
-Note that the `decipher` version will always be written to the metadata.
 
 ## Install
 

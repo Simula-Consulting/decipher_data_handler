@@ -55,37 +55,40 @@ class DataManager:
             verbose=True,
         ).fit_transform(base_df)
         logger.debug("Got exams DF")
-        observation_data_transformer = ObservationMatrix()
-        screening_data: pd.DataFrame = observation_data_transformer.fit_transform(exams)
-        pid_to_row = observation_data_transformer.pid_to_row
-        logger.debug("Got observations DF")
         person_df: pd.DataFrame = PersonStats(base_df=base_df).fit_transform(exams)
         logger.debug("Got person DF")
         return DataManager(
-            screening_data=screening_data, person_df=person_df, pid_to_row=pid_to_row
+            person_df=person_df,
+            exams_df=exams,
         )
 
     def __init__(
         self,
-        screening_data: pd.DataFrame,
         person_df: pd.DataFrame,
-        pid_to_row: dict[int, int],
+        exams_df: pd.DataFrame,
+        pid_to_row: dict[int, int] | None = None,
+        screening_data: pd.DataFrame | None = None,
+        metadata: dict | None = None,
     ):
         self.screening_data = screening_data
         self.person_df = person_df
+        self.exams_df = exams_df
         self.pid_to_row = pid_to_row
+        self.metadata = metadata or {}
 
     def save_to_parquet(
         self, directory: Path, engine: _parquet_engine_types = "auto"
     ) -> None:
         if not directory.is_dir():
             raise ValueError()
-        self.screening_data.to_parquet(
-            directory / "screening_data.parquet", engine=engine
-        )
+        if self.screening_data is not None:
+            self.screening_data.to_parquet(
+                directory / "screening_data.parquet", engine=engine
+            )
+            with open(directory / "pid_to_row.json", "w") as file:
+                json.dump(self.pid_to_row, file)
         self.person_df.to_parquet(directory / "person_df.parquet", engine=engine)
-        with open(directory / "pid_to_row.json", "w") as file:
-            json.dump(self.pid_to_row, file)
+        self.exams_df.to_parquet(directory / "exams_df.parquet", engine=engine)
         with open(directory / "metadata.json", "w") as file:
             json.dump({"decipher_version": version("decipher")}, file)
 
@@ -110,24 +113,70 @@ class DataManager:
                 )
             else:
                 logger.warning(message)
-        screening_data = pd.read_parquet(
-            directory / "screening_data.parquet", engine=engine
-        )
+        if (screening_file := directory / "screening_data.parquet").exists():
+            screening_data = pd.read_parquet(screening_file, engine=engine)
+            with open(directory / "pid_to_row.json") as file:
+                pid_to_row = json.load(file)
+            # json will make the key a str, so explicitly convert to int
+            pid_to_row = {int(key): value for key, value in pid_to_row.items()}
+        else:
+            screening_data = None
+            pid_to_row = None
         person_df = pd.read_parquet(directory / "person_df.parquet", engine=engine)
-        with open(directory / "pid_to_row.json") as file:
-            pid_to_row = json.load(file)
-        # json will make the key a str, so explicitly convert to int
-        pid_to_row = {int(key): value for key, value in pid_to_row.items()}
+        exams_df = pd.read_parquet(directory / "exams_df.parquet", engine=engine)
         return DataManager(
-            screening_data=screening_data, person_df=person_df, pid_to_row=pid_to_row
+            person_df=person_df,
+            exams_df=exams_df,
+            screening_data=screening_data,
+            pid_to_row=pid_to_row,
+        )
+
+    def get_screening_data(
+        self,
+        min_non_hpv_exams: int = 2,
+        update_inplace: bool = False,
+    ) -> tuple[pd.DataFrame, dict[int, int], dict]:
+        """Compute screning data df from exams and person df.
+
+        Returns:
+          The observation df
+          pid to row mapping
+          A metadata dict about filters etc
+        """
+        observation_data_transformer = ObservationMatrix()
+        has_sufficient_screenings = (
+            self.person_df[["histology_count", "cytology_count"]].agg("sum", axis=1)
+            >= min_non_hpv_exams
+        )
+        included_pids = has_sufficient_screenings[has_sufficient_screenings].index
+        screening_data: pd.DataFrame = observation_data_transformer.fit_transform(
+            self.exams_df[self.exams_df["PID"].isin(included_pids)]
+        )
+        pid_to_row = observation_data_transformer.pid_to_row
+        metadata = {"screenings_filters": {"min_non_hpv_exams": min_non_hpv_exams}}
+
+        if update_inplace:
+            self.screening_data = screening_data
+            self.pid_to_row = pid_to_row
+            self.metadata |= metadata
+        return (
+            screening_data,
+            pid_to_row,
+            metadata,
         )
 
     def shape(self) -> tuple[int, int]:
+        if self.screening_data is None:
+            raise ValueError("Screening data is None!")
+
         n_rows = self.screening_data["row"].max() + 1
         n_cols = self.screening_data["bin"].max() + 1
         return (n_rows, n_cols)
 
     def data_as_coo_array(self) -> coo_array:
+        if self.screening_data is None:
+            raise ValueError("Screening data is None!")
+
         clean_screen = self.screening_data[["risk", "row", "bin"]].dropna()
         array = coo_array(
             (

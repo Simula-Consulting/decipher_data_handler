@@ -19,19 +19,40 @@ def data_manager() -> DataManager:
     return DataManager.read_from_csv(test_data_screening, test_data_dob)
 
 
-def test_data_shape(data_manager: DataManager):
-    assert data_manager.shape() == (66, 233)  # Correct shape of test file
+@pytest.mark.parametrize("min_screenings_to_person", [(0, 78), (2, 66), (3, 47)])
+def test_data_shape(
+    data_manager: DataManager, min_screenings_to_person: tuple[int, int]
+):
+    min_screenings, expected_number_of_people = min_screenings_to_person
+    data_manager.get_screening_data(min_screenings, update_inplace=True)
+    assert data_manager.shape() == (
+        expected_number_of_people,
+        233,
+    )  # Correct shape of test file
 
 
 def test_get_observation_array(data_manager: DataManager):
+    with pytest.raises(ValueError):  # Screening data not implemented yet
+        data_manager.data_as_coo_array()
+    with pytest.raises(ValueError):  # Screening data not implemented yet
+        data_manager.get_screening_data()
+        data_manager.data_as_coo_array()
+    data_manager.get_screening_data(update_inplace=True)
     data_manager.data_as_coo_array()
 
 
 def test_get_feature_array(data_manager: DataManager):
+    with pytest.raises(ValueError):  # Screening data not implemented yet
+        data_manager.feature_data_as_coo_array()
+    data_manager.get_screening_data(update_inplace=True)
     data_manager.feature_data_as_coo_array()
 
 
 def test_get_masked_array(data_manager: DataManager):
+    with pytest.raises(ValueError):  # Screening data not implemented yet
+        data_manager.get_masked_data()
+    data_manager.get_screening_data(update_inplace=True)
+
     masked_X, t_pred, y_true = data_manager.get_masked_data()
     X = data_manager.data_as_coo_array()
 
@@ -46,20 +67,44 @@ def test_get_masked_array(data_manager: DataManager):
     "parquet_engine",
     [
         "pyarrow",
-        # "fastparquet",  # TODO: This fails, but looks good...
+        # "fastparquet",  # TODO: This fails, but looks good... Some round off error?
         # "auto",
     ],
 )
+@pytest.mark.parametrize("initialize_screening_data", [True, False])
 def test_parquet(
-    data_manager: DataManager, tmp_path: Path, parquet_engine: _parquet_engine_types
+    data_manager: DataManager,
+    tmp_path: Path,
+    parquet_engine: _parquet_engine_types,
+    initialize_screening_data: bool,
 ):
+    if initialize_screening_data:
+        data_manager.get_screening_data(update_inplace=True)
     data_manager.save_to_parquet(tmp_path, engine=parquet_engine)
     new_data_manager = DataManager.from_parquet(tmp_path, engine=parquet_engine)
-    assert data_manager.screening_data.equals(new_data_manager.screening_data)
-    assert data_manager.person_df.drop(columns="age_mean").equals(
-        new_data_manager.person_df.drop(columns="age_mean")
+    if initialize_screening_data:
+        assert data_manager.screening_data is not None
+        assert data_manager.pid_to_row is not None
+        assert data_manager.screening_data.equals(
+            new_data_manager.screening_data  # type: ignore[arg-type]
+        )
+        assert data_manager.pid_to_row == new_data_manager.pid_to_row
+    else:
+        assert new_data_manager.screening_data is None
+        assert new_data_manager.pid_to_row is None
+    assert data_manager.person_df.equals(new_data_manager.person_df)
+    assert data_manager.exams_df.equals(new_data_manager.exams_df)
+
+
+@pytest.mark.parametrize("min_number_of_screenings", [0, 1, 3])
+def test_metadata(data_manager: DataManager, min_number_of_screenings: int):
+    data_manager.get_screening_data(
+        min_non_hpv_exams=min_number_of_screenings, update_inplace=True
     )
-    assert data_manager.pid_to_row == new_data_manager.pid_to_row
+    assert (
+        data_manager.metadata["screenings_filters"]["min_non_hpv_exams"]
+        == min_number_of_screenings
+    )
 
 
 def test_parquet_version(data_manager: DataManager, tmp_path: Path):
