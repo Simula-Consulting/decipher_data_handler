@@ -23,16 +23,24 @@ test_data_screening = test_data_base / "test_screening_data.csv"
 test_data_dob = test_data_base / "test_dob_data.csv"
 
 
-def test_read_and_exam_pipeline():
-    """Simply try reading and running pipeline"""
+def test_base_pipeline():
     raw = read_raw_df(test_data_screening)
 
     # This should fail as we have people with missing birth data
     with pytest.raises(ValueError):
-        exam_pipeline = get_exam_pipeline(
+        base_pipeline = get_base_pipeline(
             birthday_file=test_data_dob, drop_missing_birthday=False
         )
-        exam_pipeline.fit_transform(raw)
+        base_pipeline.fit_transform(raw)
+
+    base_pipeline = get_base_pipeline(
+        birthday_file=test_data_dob, drop_missing_birthday=True
+    )
+
+
+def test_read_and_exam_pipeline():
+    """Simply try reading and running pipeline"""
+    raw = read_raw_df(test_data_screening)
 
     exam_pipeline = get_exam_pipeline(
         birthday_file=test_data_dob, drop_missing_birthday=True
@@ -102,6 +110,33 @@ def test_person_stats():
         "HPV_count",
     }
     assert set(person_df.columns) == expected_columns
+
+    invalid_pids = [
+        7,
+        15,
+        21,
+        27,
+        31,
+        42,
+        49,
+        50,
+        56,
+        57,
+        59,
+        60,
+        62,
+        68,
+        72,
+        79,
+        80,
+        83,
+        86,
+        93,
+        94,  # Not present in screening data
+        61,  # Invalid DOB data
+    ]  # People not present in data or with invalid data
+    expected_pids = {i for i in range(1, 101) if i not in invalid_pids}
+    assert expected_pids == set(person_df.index)
 
 
 def test_person_stats_w_features():

@@ -68,12 +68,11 @@ class BirthdateAdder(BaseEstimator, TransformerMixin):
             (
                 pd.read_csv(
                     self.birthday_file,
-                    dtype={"STATUS": "category"},
+                    index_col="PID",
+                    usecols=["PID", "FOEDT"],
                     parse_dates=["FOEDT"],
                     dayfirst=True,
-                )
-                .query("STATUS == 'B'")  # Take only rows giving birth data
-                .set_index("PID")["FOEDT"]
+                )["FOEDT"]
             )
             if self.dob_data is None
             else self.dob_data
