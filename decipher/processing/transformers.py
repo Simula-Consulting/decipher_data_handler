@@ -301,8 +301,9 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
                 "bin": pd.cut(
                     X["age"],
                     self.bins,
-                    right=False,
+                    right=True,
                     labels=False,
+                    include_lowest=True,
                 ),  # type: ignore[call-overload]  # right=False indicates close left side
             }
         )
