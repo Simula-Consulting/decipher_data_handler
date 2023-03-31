@@ -1,10 +1,14 @@
 import logging
+from datetime import timedelta
 from importlib.metadata import version
 from math import ceil
 from pathlib import Path
 
+import hypothesis.strategies as st
 import pandas as pd
 import pytest
+from hypothesis import assume, given
+from hypothesis.extra.pandas import column, data_frames, range_indexes
 
 from decipher.processing.pipeline import (
     get_base_pipeline,
@@ -83,6 +87,36 @@ def test_observation_out():
     months_per_bin = 3
     number_of_bins = ceil((max_age - min_age).days / days_per_month / months_per_bin)
     assert observations["bin"].max() == number_of_bins - 1  # Compensate for 0-indexing
+
+
+age16 = timedelta(days=365 * 16)
+age60 = timedelta(days=365 * 60)
+
+
+@given(
+    data_frames(
+        [
+            column(
+                "age_days",
+                elements=st.integers(min_value=age16.days, max_value=age60.days),
+            ),
+            column("PID", elements=st.integers(min_value=0)),
+            column("risk", elements=st.sampled_from(range(1, 5))),
+        ],
+        index=range_indexes(min_size=1),
+    )
+)
+def test_observation(exams: pd.DataFrame):
+    age_range = exams["age_days"].max() - exams["age_days"].min()
+    assume(age_range / 30 / 3 > 1)  # We require more than one bin
+    exams["age"] = exams["age_days"].transform(lambda days: timedelta(days=days))
+
+    observations = ObservationMatrix().fit_transform(exams)
+    assert observations.dtypes["bin"] == "int"
+
+    age_min = exams["age"].min()
+    age_max = exams["age"].max()
+    assert observations["bin"].max() == ceil((age_max - age_min).days / 30 / 3) - 1
 
 
 def test_person_stats():
