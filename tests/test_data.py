@@ -51,12 +51,15 @@ def test_get_observation_array(data_manager: DataManager):
     data_manager.data_as_coo_array()
 
 
-def test_get_feature_array(data_manager: DataManager):
+@pytest.mark.parametrize("min_non_hpv_exams", [0, 2, 3])
+def test_get_feature_array(data_manager: DataManager, min_non_hpv_exams: int):
     with pytest.raises(ValueError):  # Screening data not implemented yet
         data_manager.feature_data_as_coo_array()
-    data_manager.get_screening_data(update_inplace=True)
+    filter_ = AtLeastNNonHPV(
+        min_n=min_non_hpv_exams
+    )  # Some other value than default, to uncover assumptions
+    data_manager.get_screening_data(filter_strategy=filter_, update_inplace=True)
     feature_array = data_manager.feature_data_as_coo_array()
-    min_non_hpv_exams = 2
     number_of_people = len(
         data_manager.person_df[
             data_manager.person_df[["cytology_count", "histology_count"]].sum(axis=1)

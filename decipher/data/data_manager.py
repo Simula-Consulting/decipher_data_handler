@@ -285,13 +285,19 @@ class DataManager:
         return masked_X, t_pred, y_true
 
     def feature_data_as_coo_array(self, cols: list[str] | None = None) -> coo_array:
+        if self.pid_to_row is None:
+            raise ValueError("pid_to_row is None! Generate screening data first!")
         cols = cols or ["has_positive", "has_negative", "has_hr", "has_hr_2"]
 
         n_rows = self.shape()[0]
         n_cols = len(cols)
 
+        # People included in the screening data filtering
+        people_in_data = self.person_df[
+            self.person_df.index.isin(self.pid_to_row.keys())
+        ]
         features = (
-            self.person_df.reset_index().melt(id_vars="PID", value_vars=cols).dropna()
+            people_in_data.reset_index().melt(id_vars="PID", value_vars=cols).dropna()
         )
         features["row"] = features["PID"].map(self.pid_to_row)
         features["col_index"] = features["variable"].map(
