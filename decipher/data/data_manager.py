@@ -197,7 +197,7 @@ class DataManager:
         return masked_X, t_pred, y_true
 
     def feature_data_as_coo_array(self, cols: list[str] | None = None) -> coo_array:
-        cols = cols or ["has_positive", "has_negative"]
+        cols = cols or ["has_positive", "has_negative", "has_hr", "has_hr_2"]
 
         n_rows = self.shape()[0]
         n_cols = len(cols)

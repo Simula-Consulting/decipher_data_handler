@@ -45,7 +45,16 @@ def test_get_feature_array(data_manager: DataManager):
     with pytest.raises(ValueError):  # Screening data not implemented yet
         data_manager.feature_data_as_coo_array()
     data_manager.get_screening_data(update_inplace=True)
-    data_manager.feature_data_as_coo_array()
+    feature_array = data_manager.feature_data_as_coo_array()
+    min_non_hpv_exams = 2
+    number_of_people = len(
+        data_manager.person_df[
+            data_manager.person_df[["cytology_count", "histology_count"]].sum(axis=1)
+            >= min_non_hpv_exams
+        ].index
+    )
+    number_of_features = 4
+    assert feature_array.shape == (number_of_people, number_of_features)
 
 
 def test_get_masked_array(data_manager: DataManager):

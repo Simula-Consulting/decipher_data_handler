@@ -1,7 +1,10 @@
+import itertools
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
+from functools import partial
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import numpy as np
 import numpy.typing as npt
@@ -185,6 +188,15 @@ class RiskAdder(BaseEstimator, TransformerMixin):
         return X
 
 
+@dataclass
+class PersonFeature:
+    """Helper class for PersonStats"""
+
+    name: str
+    initial_value: Any
+    getter: Callable
+
+
 class PersonStats(BaseEstimator, TransformerMixin):
     """Take an exam DF, and generate stats per person"""
 
@@ -225,16 +237,69 @@ class PersonStats(BaseEstimator, TransformerMixin):
     def _get_hpv_features(self) -> pd.DataFrame:
         if self.base_df is None:
             raise ValueError()
+        hpv_details_df: pd.DataFrame = HPVResults().fit_transform(self.base_df)
+
+        def _true_where_result_match(match: str, field_to_query: str = "hpvResultat"):
+            pids = self.base_df.query(f"{field_to_query} == '{match}'")["PID"].unique()  # type: ignore[union-attr]
+            values = True
+            return pids, values
+
+        features: list[PersonFeature] = [
+            PersonFeature(
+                "has_positive",
+                False,
+                partial(_true_where_result_match, match="positiv"),
+            ),
+            PersonFeature(
+                "has_negative",
+                False,
+                partial(_true_where_result_match, match="negativ"),
+            ),
+            PersonFeature(
+                "has_hr",
+                None,
+                partial(self._get_people_with_hr_hpv, hpv_details_df=hpv_details_df),
+            ),
+            PersonFeature(
+                "has_hr_2",
+                None,
+                partial(
+                    self._get_people_with_hr_hpv,
+                    hpv_details_df=hpv_details_df,
+                    hr_subgroups=[0, 1],
+                ),
+            ),
+        ]
+
         feature_df = pd.DataFrame(
             index=self.base_df["PID"].unique(),
-            columns=["has_positive", "has_negative"],
+            data={feature.name: feature.initial_value for feature in features},
             dtype="boolean",
         )
-        positives = self.base_df.query("hpvResultat == 'positiv'")["PID"].unique()
-        negatives = self.base_df.query("hpvResultat == 'negativ'")["PID"].unique()
-        feature_df.loc[positives, "has_positive"] = True
-        feature_df.loc[negatives, "has_negative"] = True
+
+        for feature in features:
+            pids, values = feature.getter()
+            feature_df.loc[pids, feature.name] = values
+
         return feature_df
+
+    def _get_people_with_hr_hpv(
+        self, hpv_details_df: pd.DataFrame, hr_subgroups: list[int] | None = None
+    ):
+        # Risky HPV types, grouped from most risky group
+        risky_hpv_types: list[list[int | str]] = [
+            [16, 18, 45],
+            ["HR"],
+            [31, 33, 35, 52, 58],
+        ]
+        if hr_subgroups is None:
+            hr_subgroups = list(range(len(risky_hpv_types)))
+        hr_types: Iterable[int | str] = itertools.chain.from_iterable(
+            risky_hpv_types[subgroup] for subgroup in hr_subgroups
+        )
+        pids = hpv_details_df[hpv_details_df["value"].isin(hr_types)]["PID"].unique()
+        values = True
+        return pids, values
 
 
 class HPVResults(BaseEstimator, TransformerMixin):

@@ -200,6 +200,8 @@ def test_person_stats_w_features():
         "HPV_count",
         "has_positive",
         "has_negative",
+        "has_hr",
+        "has_hr_2",
     }
     assert set(person_df.columns) == expected_columns
 
