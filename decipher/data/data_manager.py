@@ -180,7 +180,7 @@ class DataManager:
         self.person_df.to_parquet(directory / "person_df.parquet", engine=engine)
         self.exams_df.to_parquet(directory / "exams_df.parquet", engine=engine)
         with open(directory / "metadata.json", "w") as file:
-            json.dump({"decipher_version": version("decipher")}, file)
+            json.dump({"decipher_version": version("decipher")} | self.metadata, file)
 
     @classmethod
     def from_parquet(
