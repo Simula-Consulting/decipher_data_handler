@@ -1,8 +1,10 @@
+import itertools
 import json
 import logging
+from abc import ABC, abstractmethod
 from importlib.metadata import version
 from pathlib import Path
-from typing import Literal
+from typing import Any, Callable, Iterable, Literal
 
 import numpy.typing as npt
 import pandas as pd
@@ -39,6 +41,94 @@ def _get_base_df(screening_path: Path, dob_path: Path) -> pd.DataFrame:
     )
 
     return base_pipeline.fit_transform(raw_data)
+
+
+class PersonFilter(ABC):
+    """Strategy for filtering people; given a person_df, return PIDs"""
+
+    @abstractmethod
+    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+        ...
+
+    def metadata(self) -> dict:
+        return {"type": "generic_filter"}
+
+
+class AtLeastNNonHPV(PersonFilter):
+    def __init__(self, min_n: int = 2):
+        self.min_n = min_n
+
+    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+        has_sufficient_screenings = (
+            person_df[["histology_count", "cytology_count"]].agg("sum", axis=1)
+            >= self.min_n
+        )
+        return has_sufficient_screenings[has_sufficient_screenings].index
+
+    def metadata(self) -> dict:
+        return {"type": "min_n_non_hpv", "min_n": self.min_n}
+
+
+class TrueFields(PersonFilter):
+    """Filter people where all fields in `fields` are True."""
+
+    def __init__(self, fields: list[str]):
+        self.fields = fields
+
+    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+        matches = person_df[self.fields].all(axis=1)
+        return person_df[matches].index
+
+    def metadata(self) -> dict:
+        return {"type": "true fields", "fields": self.fields}
+
+
+class OperatorFilter(PersonFilter):
+    """Arbitrary operator comparison.
+
+    Example:
+    >>> from operator import lt  # Less than
+    >>> OperatorFilter("age_min", lt, timedelta(days=365 * 50)).filter(person_df)
+
+    TODO:
+        Can potentially make field a list of fields, and then apply all(axis=1),
+        similar to TrueFields. Then, TrueFields would just be a special case of this.
+    """
+
+    def __init__(self, field: str, operator: Callable, value: Any):
+        self.field = field
+        self.operator = operator
+        self.value = value
+
+    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+        matches: "pd.Series[bool]" = self.operator(person_df[self.field], self.value)
+        return person_df[matches].index
+
+    def metadata(self) -> dict:
+        return {
+            "type": "operator filter",
+            "field": self.field,
+            "operator": str(self.operator),
+            "value": str(self.value),
+        }
+
+
+class CombinePersonFilter(PersonFilter):
+    def __init__(self, filters: list[PersonFilter]):
+        self.filters = filters
+
+    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+        return set(
+            itertools.chain.from_iterable(
+                (filter_.filter(person_df) for filter_ in self.filters)
+            )
+        )
+
+    def metadata(self) -> dict:
+        return {
+            "type": "combine filter",
+            "sub filters": [filter_.metadata() for filter_ in self.filters],
+        }
 
 
 class DataManager:
@@ -133,7 +223,7 @@ class DataManager:
 
     def get_screening_data(
         self,
-        min_non_hpv_exams: int = 2,
+        filter_strategy: PersonFilter | None = None,
         update_inplace: bool = False,
     ) -> tuple[pd.DataFrame, dict[int, int], dict]:
         """Compute screning data df from exams and person df.
@@ -143,17 +233,15 @@ class DataManager:
           pid to row mapping
           A metadata dict about filters etc
         """
+        if filter_strategy is None:
+            filter_strategy = AtLeastNNonHPV(min_n=2)
         observation_data_transformer = ObservationMatrix()
-        has_sufficient_screenings = (
-            self.person_df[["histology_count", "cytology_count"]].agg("sum", axis=1)
-            >= min_non_hpv_exams
-        )
-        included_pids = has_sufficient_screenings[has_sufficient_screenings].index
+        included_pids = filter_strategy.filter(self.person_df)
         screening_data: pd.DataFrame = observation_data_transformer.fit_transform(
             self.exams_df[self.exams_df["PID"].isin(included_pids)]
         )
         pid_to_row = observation_data_transformer.pid_to_row
-        metadata = {"screenings_filters": {"min_non_hpv_exams": min_non_hpv_exams}}
+        metadata = {"screenings_filters": filter_strategy.metadata()}
 
         if update_inplace:
             self.screening_data = screening_data

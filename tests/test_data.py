@@ -1,11 +1,20 @@
 import json
 import logging
+import operator
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
 from decipher.data import DataManager
-from decipher.data.data_manager import _parquet_engine_types
+from decipher.data.data_manager import (
+    AtLeastNNonHPV,
+    CombinePersonFilter,
+    OperatorFilter,
+    PersonFilter,
+    TrueFields,
+    _parquet_engine_types,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +33,8 @@ def test_data_shape(
     data_manager: DataManager, min_screenings_to_person: tuple[int, int]
 ):
     min_screenings, expected_number_of_people = min_screenings_to_person
-    data_manager.get_screening_data(min_screenings, update_inplace=True)
+    filter_ = AtLeastNNonHPV(min_n=min_screenings)
+    data_manager.get_screening_data(filter_strategy=filter_, update_inplace=True)
     assert data_manager.shape() == (
         expected_number_of_people,
         233,
@@ -108,12 +118,33 @@ def test_parquet(
 @pytest.mark.parametrize("min_number_of_screenings", [0, 1, 3])
 def test_metadata(data_manager: DataManager, min_number_of_screenings: int):
     data_manager.get_screening_data(
-        min_non_hpv_exams=min_number_of_screenings, update_inplace=True
+        filter_strategy=AtLeastNNonHPV(min_n=min_number_of_screenings),
+        update_inplace=True,
     )
     assert (
-        data_manager.metadata["screenings_filters"]["min_non_hpv_exams"]
-        == min_number_of_screenings
+        data_manager.metadata["screenings_filters"]["min_n"] == min_number_of_screenings
     )
+
+
+@pytest.mark.parametrize(
+    "filter_",
+    [
+        OperatorFilter("age_min", operator=operator.lt, value=timedelta(days=365 * 50)),
+        TrueFields(["has_hr"]),
+        TrueFields(["has_hr", "has_positive"]),
+        CombinePersonFilter(
+            [
+                OperatorFilter(
+                    "age_min", operator=operator.lt, value=timedelta(days=365 * 50)
+                ),
+                TrueFields(["has_hr"]),
+            ]
+        ),
+    ],
+)
+def test_filter(data_manager: DataManager, filter_: PersonFilter):
+    data_manager.get_screening_data(filter_strategy=filter_, update_inplace=True)
+    logger.debug(f"Metadata is:\n{data_manager.metadata}")
 
 
 def test_parquet_version(data_manager: DataManager, tmp_path: Path):
