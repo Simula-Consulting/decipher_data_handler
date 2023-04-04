@@ -58,7 +58,13 @@ data_manager = DataManager.from_parquet(parquet_dir, engine="pyarrow")
 data_manager.get_screening_data(min_non_hpv_exams=3, update_inplace=True)
 
 # Saving will now also include the computed observation data
+# Not required, just convenient
 data_manger.save_to_parquet(parquet_dir, engine="pyarrow")
+
+# Actually get the matrix
+X = data_manager.data_as_coo_array()
+# or
+X_masked, t_pred, y_true = data_manager.get_masked_data()
 ```
 
 ## Install
