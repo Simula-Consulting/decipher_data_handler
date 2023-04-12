@@ -164,7 +164,7 @@ class DataManager:
         self.person_df = person_df
         self.exams_df = exams_df
         self.pid_to_row = pid_to_row
-        self.metadata = metadata or {}
+        self.metadata = metadata or {"decipher_version": version("decipher")}
 
     def save_to_parquet(
         self, directory: Path, engine: _parquet_engine_types = "auto"
@@ -180,6 +180,8 @@ class DataManager:
         self.person_df.to_parquet(directory / "person_df.parquet", engine=engine)
         self.exams_df.to_parquet(directory / "exams_df.parquet", engine=engine)
         with open(directory / "metadata.json", "w") as file:
+            # We always want to store the decipher version, so if it is not
+            # in the metadata, add it.
             json.dump({"decipher_version": version("decipher")} | self.metadata, file)
 
     @classmethod
@@ -219,6 +221,7 @@ class DataManager:
             exams_df=exams_df,
             screening_data=screening_data,
             pid_to_row=pid_to_row,
+            metadata=metadata,
         )
 
     def get_screening_data(

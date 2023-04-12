@@ -119,7 +119,7 @@ def test_parquet(
 
 
 @pytest.mark.parametrize("min_number_of_screenings", [0, 1, 3])
-def test_metadata(data_manager: DataManager, min_number_of_screenings: int):
+def test_metadata(data_manager: DataManager, min_number_of_screenings: int, tmp_path):
     data_manager.get_screening_data(
         filter_strategy=AtLeastNNonHPV(min_n=min_number_of_screenings),
         update_inplace=True,
@@ -127,6 +127,9 @@ def test_metadata(data_manager: DataManager, min_number_of_screenings: int):
     assert (
         data_manager.metadata["screenings_filters"]["min_n"] == min_number_of_screenings
     )
+    data_manager.save_to_parquet(tmp_path)
+    new_data_manger = DataManager.from_parquet(tmp_path)
+    assert data_manager.metadata == new_data_manger.metadata
 
 
 @pytest.mark.parametrize(
