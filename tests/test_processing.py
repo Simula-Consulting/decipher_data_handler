@@ -71,13 +71,13 @@ def test_observation_out():
     exam_pipeline = get_exam_pipeline(
         birthday_file=test_data_dob, drop_missing_birthday=True
     )
-    exam_df = exam_pipeline.fit_transform(raw)
+    exam_df: pd.DataFrame = exam_pipeline.fit_transform(raw)  # type: ignore
     observations = ObservationMatrix().fit_transform(exam_df)
     logger.info(observations)
 
-    assert {"bin", "row", "risk"} == set(observations)
+    assert {"bin", "PID", "risk"} == set(observations)
     # Assert only one risk per person per time
-    assert observations.value_counts(subset=["row", "bin"]).unique() == [1]
+    assert observations.value_counts(subset=["PID", "bin"]).unique() == [1]
 
     # Check correct number of bins
     min_age = exam_df["age"].min()
@@ -139,9 +139,6 @@ def test_person_stats():
         "risk_max",
         "risk_mean",
         "FOEDT",
-        "cytology_count",
-        "histology_count",
-        "HPV_count",
     }
     assert set(person_df.columns) == expected_columns
 
@@ -195,9 +192,6 @@ def test_person_stats_w_features():
         "risk_max",
         "risk_mean",
         "FOEDT",
-        "cytology_count",
-        "histology_count",
-        "HPV_count",
         "has_positive",
         "has_negative",
         "has_hr",

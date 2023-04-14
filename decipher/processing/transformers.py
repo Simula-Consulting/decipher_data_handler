@@ -16,7 +16,16 @@ from decipher.exam_data import Diagnosis, ExamTypes, risk_mapping
 logger = logging.getLogger(__name__)
 
 
-class CleanData(BaseEstimator, TransformerMixin):
+class PandasTransformerMixin(TransformerMixin):
+    """Transformer mixin with type hint set to Pandas."""
+
+    def fit_transform(
+        self, X: pd.DataFrame, y: Any = None, **fit_params
+    ) -> pd.DataFrame:
+        return super().fit_transform(X, y, **fit_params)  # type: ignore
+
+
+class CleanData(BaseEstimator, PandasTransformerMixin):
     """Check that data has the expected columns on the correct data type"""
 
     def __init__(self, dtypes: dict[str, Any] | None = None) -> None:
@@ -50,7 +59,7 @@ class CleanData(BaseEstimator, TransformerMixin):
         return X
 
 
-class BirthdateAdder(BaseEstimator, TransformerMixin):
+class BirthdateAdder(BaseEstimator, PandasTransformerMixin):
     """Adds a birthdate column to the screening data by using the PID mapping to another
     file containing the birth registry.
 
@@ -95,7 +104,7 @@ class BirthdateAdder(BaseEstimator, TransformerMixin):
         return X
 
 
-class ToExam(BaseEstimator, TransformerMixin):
+class ToExam(BaseEstimator, PandasTransformerMixin):
     def __init__(self, fields_to_keep: list | None = None) -> None:
         self.fields_to_keep = fields_to_keep or ["PID", "FOEDT"]
         super().__init__()
@@ -154,7 +163,7 @@ class ToExam(BaseEstimator, TransformerMixin):
         }[field_name]
 
 
-class AgeAdder(BaseEstimator, TransformerMixin):
+class AgeAdder(BaseEstimator, PandasTransformerMixin):
     def __init__(
         self, date_field: str, birth_field: str, age_field: str = "age"
     ) -> None:
@@ -172,7 +181,7 @@ class AgeAdder(BaseEstimator, TransformerMixin):
         return X
 
 
-class RiskAdder(BaseEstimator, TransformerMixin):
+class RiskAdder(BaseEstimator, PandasTransformerMixin):
     def fit(self, X, y=None):
         if "exam_diagnosis" not in X:
             raise ValueError("No exam diagnosis! Is this an exam DF?")
@@ -197,7 +206,7 @@ class PersonFeature:
     getter: Callable
 
 
-class PersonStats(BaseEstimator, TransformerMixin):
+class PersonStats(BaseEstimator, PandasTransformerMixin):
     """Take an exam DF, and generate stats per person"""
 
     def __init__(self, base_df: pd.DataFrame | None = None) -> None:
@@ -220,21 +229,21 @@ class PersonStats(BaseEstimator, TransformerMixin):
             "_".join(column) for column in person_df.columns
         ]  # type: ignore # Flatten columns
         person_df = person_df.join(X.groupby("PID")["FOEDT"].agg("first"), on="PID")
-        count_per_person_per_exam_type = (
-            X.groupby("exam_type", as_index=False)["PID"]  # type: ignore[operator]
-            .value_counts()
-            .pivot(index="PID", columns="exam_type", values="count")
-        )
-        count_per_person_per_exam_type.columns = [
-            f"{col}_count" for col in count_per_person_per_exam_type.columns
-        ]
-        person_df = person_df.join(count_per_person_per_exam_type, on="PID")
 
         if self.base_df is not None:
             person_df = person_df.join(self._get_hpv_features())
         return person_df
 
     def _get_hpv_features(self) -> pd.DataFrame:
+        """Construct a DataFrame with relevant HPV features.
+
+        Warning:
+          As it is currently implemented, there might be some confusing behavior when
+          for example there are multiple HPV exams at the same time point.
+          For example, if a person has two HPV exams at the same time, one giving
+          positive and one giving negative, they will both be counted in the
+          'has_positive' and 'has_negative' features.
+        """
         if self.base_df is None:
             raise ValueError()
         hpv_details_df: pd.DataFrame = HPVResults().fit_transform(self.base_df)
@@ -302,7 +311,7 @@ class PersonStats(BaseEstimator, TransformerMixin):
         return pids, values
 
 
-class HPVResults(BaseEstimator, TransformerMixin):
+class HPVResults(BaseEstimator, PandasTransformerMixin):
     """Take a raw DF, and generate HPV results
 
     Warning:
@@ -332,7 +341,7 @@ class HPVResults(BaseEstimator, TransformerMixin):
         ).astype({"variable": "category", "value": "category"})
 
 
-class ObservationMatrix(BaseEstimator, TransformerMixin):
+class ObservationMatrix(BaseEstimator, PandasTransformerMixin):
     """Convert exams df to observations"""
 
     def __init__(
@@ -344,10 +353,6 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
 
     def fit(self, X: pd.DataFrame, y=None):
         CleanData(dtypes={"PID": "int64", "age": "timedelta64[ns]", "risk": "Int64"})
-        # Create a mapping between row in matrix and PID
-        pids = X["PID"].unique()
-        self.pid_to_row: dict[int, int] = {int(pid): i for i, pid in enumerate(pids)}
-
         # Make the time bins
         days_per_month = 30
         bin_width = timedelta(days=self.months_per_bin * days_per_month)
@@ -361,8 +366,8 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         out = pd.DataFrame(
             {
+                "PID": X["PID"],
                 "risk": X["risk"],
-                "row": X["PID"].map(self.pid_to_row),
                 "bin": pd.cut(
                     X["age"],
                     self.bins,
@@ -372,9 +377,12 @@ class ObservationMatrix(BaseEstimator, TransformerMixin):
                 ),  # type: ignore[call-overload]  # right=False indicates close left side
             }
         )
+        assert not out[["PID", "bin"]].isna().any().any(), "You fucked up"
+        out = out.dropna()  # Drop nan risk
+
         # The observed=True is important!
         # As the bin is categorical, observed=False will produce a cartesian product
         # between all possible bins and all rows. This eats up a lot of memory!
-        return out.groupby(["row", "bin"], as_index=False, observed=True)["risk"].agg(
+        return out.groupby(["PID", "bin"], as_index=False, observed=True)["risk"].agg(
             self.risk_agg_method
         )  # type: ignore[return-value]  # as_index=False makes this a DataFrame

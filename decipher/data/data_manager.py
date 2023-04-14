@@ -47,7 +47,9 @@ class PersonFilter(ABC):
     """Strategy for filtering people; given a person_df, return PIDs"""
 
     @abstractmethod
-    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+    def filter(
+        self, person_df: pd.DataFrame, screening_df: pd.DataFrame
+    ) -> Iterable[int] | "pd.Series[int]":
         ...
 
     def metadata(self) -> dict:
@@ -58,12 +60,11 @@ class AtLeastNNonHPV(PersonFilter):
     def __init__(self, min_n: int = 2):
         self.min_n = min_n
 
-    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
-        has_sufficient_screenings = (
-            person_df[["histology_count", "cytology_count"]].agg("sum", axis=1)
-            >= self.min_n
-        )
-        return has_sufficient_screenings[has_sufficient_screenings].index
+    def filter(
+        self, person_df: pd.DataFrame, screening_df: pd.DataFrame
+    ) -> Iterable[int] | "pd.Series[int]":
+        exam_count_per_person = screening_df["PID"].value_counts()
+        return exam_count_per_person[exam_count_per_person >= self.min_n].index
 
     def metadata(self) -> dict:
         return {"type": "min_n_non_hpv", "min_n": self.min_n}
@@ -75,7 +76,9 @@ class TrueFields(PersonFilter):
     def __init__(self, fields: list[str]):
         self.fields = fields
 
-    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+    def filter(
+        self, person_df: pd.DataFrame, screening_df: pd.DataFrame
+    ) -> Iterable[int] | "pd.Series[int]":
         matches = person_df[self.fields].all(axis=1)
         return person_df[matches].index
 
@@ -100,7 +103,9 @@ class OperatorFilter(PersonFilter):
         self.operator = operator
         self.value = value
 
-    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+    def filter(
+        self, person_df: pd.DataFrame, screening_df: pd.DataFrame
+    ) -> Iterable[int] | "pd.Series[int]":
         matches: "pd.Series[bool]" = self.operator(person_df[self.field], self.value)
         return person_df[matches].index
 
@@ -117,10 +122,12 @@ class CombinePersonFilter(PersonFilter):
     def __init__(self, filters: list[PersonFilter]):
         self.filters = filters
 
-    def filter(self, person_df: pd.DataFrame) -> Iterable[int] | "pd.Series[int]":
+    def filter(
+        self, person_df: pd.DataFrame, screening_df: pd.DataFrame
+    ) -> Iterable[int] | "pd.Series[int]":
         return set(
             itertools.chain.from_iterable(
-                (filter_.filter(person_df) for filter_ in self.filters)
+                (filter_.filter(person_df, screening_df) for filter_ in self.filters)
             )
         )
 
@@ -238,12 +245,18 @@ class DataManager:
         """
         if filter_strategy is None:
             filter_strategy = AtLeastNNonHPV(min_n=2)
+
         observation_data_transformer = ObservationMatrix()
-        included_pids = filter_strategy.filter(self.person_df)
         screening_data: pd.DataFrame = observation_data_transformer.fit_transform(
-            self.exams_df[self.exams_df["PID"].isin(included_pids)]
+            self.exams_df
         )
-        pid_to_row = observation_data_transformer.pid_to_row
+        included_pids = filter_strategy.filter(self.person_df, screening_data)
+        screening_data = screening_data[screening_data["PID"].isin(included_pids)]
+
+        pid_to_row: dict[int, int] = {
+            int(pid): i for i, pid in enumerate(screening_data["PID"].unique())
+        }
+        screening_data["row"] = screening_data["PID"].map(pid_to_row)
         metadata = {"screenings_filters": filter_strategy.metadata()}
 
         if update_inplace:

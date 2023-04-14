@@ -4,6 +4,7 @@ import operator
 from datetime import timedelta
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from decipher.data import DataManager
@@ -28,7 +29,7 @@ def data_manager() -> DataManager:
     return DataManager.read_from_csv(test_data_screening, test_data_dob)
 
 
-@pytest.mark.parametrize("min_screenings_to_person", [(0, 78), (2, 66), (3, 47)])
+@pytest.mark.parametrize("min_screenings_to_person", [(0, 76), (2, 64), (3, 42)])
 def test_data_shape(
     data_manager: DataManager, min_screenings_to_person: tuple[int, int]
 ):
@@ -60,12 +61,8 @@ def test_get_feature_array(data_manager: DataManager, min_non_hpv_exams: int):
     )  # Some other value than default, to uncover assumptions
     data_manager.get_screening_data(filter_strategy=filter_, update_inplace=True)
     feature_array = data_manager.feature_data_as_coo_array()
-    number_of_people = len(
-        data_manager.person_df[
-            data_manager.person_df[["cytology_count", "histology_count"]].sum(axis=1)
-            >= min_non_hpv_exams
-        ].index
-    )
+    assert isinstance(data_manager.pid_to_row, dict), "Hmmm"
+    number_of_people = len(data_manager.pid_to_row)
     number_of_features = 4
     assert feature_array.shape == (number_of_people, number_of_features)
 
@@ -151,6 +148,16 @@ def test_metadata(data_manager: DataManager, min_number_of_screenings: int, tmp_
 def test_filter(data_manager: DataManager, filter_: PersonFilter):
     data_manager.get_screening_data(filter_strategy=filter_, update_inplace=True)
     logger.debug(f"Metadata is:\n{data_manager.metadata}")
+
+
+@pytest.mark.parametrize("min_n_exams", [0, 2, 4])
+def test_filter_2(data_manager: DataManager, min_n_exams: int):
+    data_manager.get_screening_data(
+        filter_strategy=AtLeastNNonHPV(min_n=min_n_exams), update_inplace=True
+    )
+    X = data_manager.data_as_coo_array().toarray()
+    counts_per_person = np.count_nonzero(X, axis=1)
+    assert (counts_per_person >= min_n_exams).all()
 
 
 def test_parquet_version(data_manager: DataManager, tmp_path: Path):
