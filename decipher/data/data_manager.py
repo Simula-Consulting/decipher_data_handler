@@ -257,6 +257,9 @@ class DataManager:
             int(pid): i for i, pid in enumerate(screening_data["PID"].unique())
         }
         screening_data["row"] = screening_data["PID"].map(pid_to_row)
+
+        assert not screening_data.isna().values.any()
+        assert screening_data["risk"].isin(range(1, 5)).all()
         metadata = {"screenings_filters": filter_strategy.metadata()}
 
         if update_inplace:
@@ -281,17 +284,14 @@ class DataManager:
         if self.screening_data is None:
             raise ValueError("Screening data is None!")
 
-        clean_screen = self.screening_data[["risk", "row", "bin"]].dropna()
-        array = coo_array(
+        return coo_array(
             (
-                clean_screen["risk"],
-                (clean_screen["row"], clean_screen["bin"]),
+                self.screening_data["risk"],
+                (self.screening_data["row"], self.screening_data["bin"]),
             ),
             shape=self.shape(),
             dtype="int8",
         )
-        array.eliminate_zeros()
-        return array
 
     def get_masked_data(self) -> tuple[coo_array, npt.NDArray, npt.NDArray]:
         X = self.data_as_coo_array()

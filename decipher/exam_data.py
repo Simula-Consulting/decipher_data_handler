@@ -73,8 +73,8 @@ risk_mapping = {
     Diagnosis.SCC: 4,
     Diagnosis.ADC: 4,
     # TODO: Check metastasis and cancer!
-    Diagnosis.METASTASIS: 4,
-    Diagnosis.CANCER: 4,
+    Diagnosis.METASTASIS: None,
+    Diagnosis.CANCER: None,
     ##
     Diagnosis.Hist10: 1,
     Diagnosis.Hist100: 1,
@@ -91,13 +91,13 @@ risk_mapping = {
     Diagnosis.Hist81403: 4,
     Diagnosis.Hist82103: 4,
     #
-    Diagnosis.Hist10700: 0,
-    Diagnosis.Hist21000: 0,
-    Diagnosis.Hist79350: 0,
-    Diagnosis.Hist86666: 0,
-    Diagnosis.Hist9010: 0,
-    Diagnosis.Hist9500: 0,
-    Diagnosis.Hist99: 0,
+    Diagnosis.Hist10700: None,
+    Diagnosis.Hist21000: None,
+    Diagnosis.Hist79350: None,
+    Diagnosis.Hist86666: None,
+    Diagnosis.Hist9010: None,
+    Diagnosis.Hist9500: None,
+    Diagnosis.Hist99: None,
     ##
     # HPV is not mapped to a risk
     Diagnosis.HPVNegative: None,
