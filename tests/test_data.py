@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from decipher.data import DataManager
 from decipher.data.data_manager import (
@@ -148,6 +150,33 @@ def test_metadata(data_manager: DataManager, min_number_of_screenings: int, tmp_
 def test_filter(data_manager: DataManager, filter_: PersonFilter):
     data_manager.get_screening_data(filter_strategy=filter_, update_inplace=True)
     logger.debug(f"Metadata is:\n{data_manager.metadata}")
+
+
+@settings(suppress_health_check=(HealthCheck.function_scoped_fixture,))
+@given(
+    filters=st.lists(
+        st.sampled_from(
+            [
+                OperatorFilter(
+                    "age_min", operator=operator.lt, value=timedelta(days=365 * 50)
+                ),
+                OperatorFilter("risk_min", operator=operator.gt, value=1),
+                TrueFields(["has_hr"]),
+                TrueFields(["has_hr", "has_positive"]),
+                AtLeastNNonHPV(2),
+                AtLeastNNonHPV(4),
+            ]
+        ),
+        max_size=4,
+        min_size=1,
+    )
+)
+def test_combine_filter(data_manager: DataManager, filters: list[PersonFilter]):
+    combined_filter = CombinePersonFilter(filters)
+    _, pid_to_row, _ = data_manager.get_screening_data(filter_strategy=combined_filter)
+    pids = set(pid_to_row.keys())
+    for filter in filters:
+        assert pids <= set(data_manager.get_screening_data(filter_strategy=filter)[1])
 
 
 @pytest.mark.parametrize("min_n_exams", [0, 2, 4])

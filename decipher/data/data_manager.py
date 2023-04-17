@@ -1,6 +1,7 @@
-import itertools
+import functools
 import json
 import logging
+import operator
 from abc import ABC, abstractmethod
 from importlib.metadata import version
 from pathlib import Path
@@ -120,15 +121,16 @@ class OperatorFilter(PersonFilter):
 
 class CombinePersonFilter(PersonFilter):
     def __init__(self, filters: list[PersonFilter]):
+        if not filters:
+            raise ValueError("Filters cannot be empty!")
         self.filters = filters
 
     def filter(
         self, person_df: pd.DataFrame, screening_df: pd.DataFrame
     ) -> Iterable[int] | "pd.Series[int]":
-        return set(
-            itertools.chain.from_iterable(
-                (filter_.filter(person_df, screening_df) for filter_ in self.filters)
-            )
+        return functools.reduce(
+            operator.and_,
+            (set(filter_.filter(person_df, screening_df)) for filter_ in self.filters),
         )
 
     def metadata(self) -> dict:
