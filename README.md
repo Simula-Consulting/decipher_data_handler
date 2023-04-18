@@ -67,6 +67,37 @@ X = data_manager.data_as_coo_array()
 X_masked, t_pred, y_true = data_manager.get_masked_data()
 ```
 
+#### The feature matrix
+
+The feature matrix is extracted as
+```python
+data_manager.feature_data_as_coo_array()
+```
+or select only a subset of the features by passing a list of features to choose from.
+These features have to be columns of `data_manager.person_df`.
+By default, these are `["has_positive", "has_negative", "has_hr", "has_hr_2"]`.
+To use other features, or to alter these, add columns as needed in the person data frame.
+
+For example
+```python
+from pathlib import Path
+from decipher.data import DataManager
+
+parquet_dir = Path(<parquet dir>)
+
+# Read from Parquet
+data_manager = DataManager.from_parquet(parquet_dir, engine="pyarrow")
+
+# Add feature
+data_manager.person_df["risky"] = data_manager.person_df["risk_max"] > 2
+
+# Get out the feature matrix
+# We include also the non-default 'risky' feature and drop 'has_hr2'.
+feature_matrix = data_manager.feature_data_as_coo_array(
+    cols=["has_positive", "has_negative", "has_hr", "risky"]
+)
+```
+
 ## Install
 
 ## Parquet support
