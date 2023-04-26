@@ -1,18 +1,15 @@
 import functools
 import json
-import logging
 import operator
 from abc import ABC, abstractmethod
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any, Callable, Iterable, Literal
+from typing import Any, Callable, Iterable, Literal, Sequence
 
-import numpy.typing as npt
 import pandas as pd
-from scipy.sparse import coo_array
+from loguru import logger
 from sklearn.pipeline import Pipeline
 
-from decipher.data.util import prediction_data
 from decipher.processing.pipeline import get_base_pipeline, read_raw_df
 from decipher.processing.transformers import (
     AgeAdder,
@@ -22,7 +19,6 @@ from decipher.processing.transformers import (
     ToExam,
 )
 
-logger = logging.getLogger(__name__)
 _parquet_engine_types = Literal["auto", "pyarrow", "fastparquet"]
 """Engine to use for parquet IO."""
 
@@ -141,6 +137,18 @@ class CombinePersonFilter(PersonFilter):
 
 
 class DataManager:
+    def __init__(
+        self,
+        person_df: pd.DataFrame,
+        exams_df: pd.DataFrame,
+        screening_data: pd.DataFrame | None = None,
+        metadata: dict | None = None,
+    ):
+        self.screening_data = screening_data
+        self.person_df = person_df
+        self.exams_df = exams_df
+        self.metadata = metadata or {"decipher_version": version("decipher")}
+
     @classmethod
     def read_from_csv(cls, screening_path: Path, dob_path: Path):
         base_df = _get_base_df(screening_path, dob_path)
@@ -161,20 +169,6 @@ class DataManager:
             exams_df=exams,
         )
 
-    def __init__(
-        self,
-        person_df: pd.DataFrame,
-        exams_df: pd.DataFrame,
-        pid_to_row: dict[int, int] | None = None,
-        screening_data: pd.DataFrame | None = None,
-        metadata: dict | None = None,
-    ):
-        self.screening_data = screening_data
-        self.person_df = person_df
-        self.exams_df = exams_df
-        self.pid_to_row = pid_to_row
-        self.metadata = metadata or {"decipher_version": version("decipher")}
-
     def save_to_parquet(
         self, directory: Path, engine: _parquet_engine_types = "auto"
     ) -> None:
@@ -184,8 +178,6 @@ class DataManager:
             self.screening_data.to_parquet(
                 directory / "screening_data.parquet", engine=engine
             )
-            with open(directory / "pid_to_row.json", "w") as file:
-                json.dump(self.pid_to_row, file)
         self.person_df.to_parquet(directory / "person_df.parquet", engine=engine)
         self.exams_df.to_parquet(directory / "exams_df.parquet", engine=engine)
         with open(directory / "metadata.json", "w") as file:
@@ -216,20 +208,14 @@ class DataManager:
                 logger.warning(message)
         if (screening_file := directory / "screening_data.parquet").exists():
             screening_data = pd.read_parquet(screening_file, engine=engine)
-            with open(directory / "pid_to_row.json") as file:
-                pid_to_row = json.load(file)
-            # json will make the key a str, so explicitly convert to int
-            pid_to_row = {int(key): value for key, value in pid_to_row.items()}
         else:
             screening_data = None
-            pid_to_row = None
         person_df = pd.read_parquet(directory / "person_df.parquet", engine=engine)
         exams_df = pd.read_parquet(directory / "exams_df.parquet", engine=engine)
         return DataManager(
             person_df=person_df,
             exams_df=exams_df,
             screening_data=screening_data,
-            pid_to_row=pid_to_row,
             metadata=metadata,
         )
 
@@ -237,13 +223,39 @@ class DataManager:
         self,
         filter_strategy: PersonFilter | None = None,
         update_inplace: bool = False,
-    ) -> tuple[pd.DataFrame, dict[int, int], dict]:
-        """Compute screning data df from exams and person df.
+    ) -> tuple[pd.DataFrame, dict]:
+        """Compute screening data df from exams and person df.
+
+        The output DataFrame will have the following columns:
+          - PID: The person ID
+          - bin: The bin number
+          - risk: The risk of the bin
+          - is_last: Whether the bin is the last bin for the person
 
         Returns:
           The observation df
-          pid to row mapping
           A metadata dict about filters etc
+
+        Examples:
+            To convert to an array, you may for example use coo array
+            >>> from scipy.sparse import coo_array
+            >>> coo_array(
+            ...     (
+            ...         data_manager.screening_data["risk"],
+            ...         (
+            ...             data_manager.screening_data["PID"].map(pid_to_row),
+            ...             data_manager.screening_data["bin"],
+            ...         ),
+            ...     ),
+            ...     shape=(len(pid_to_row), data_manager.screening_data["bin"].max() + 1),
+            ...     dtype="int8",
+            ... )
+
+            Or more directly, something like
+            >>> rows = data_manager.screening_data["PID"].map(pid_to_row)
+            >>> cols = data_manager.screening_data["bin"]
+            >>> observed = np.zeros((rows.max() + 1, cols.max() + 1), dtype="int8")
+            >>> observed[row, col] = data_manager.screening_data["risk"]
         """
         if filter_strategy is None:
             filter_strategy = AtLeastNNonHPV(min_n=2)
@@ -255,10 +267,12 @@ class DataManager:
         included_pids = filter_strategy.filter(self.person_df, screening_data)
         screening_data = screening_data[screening_data["PID"].isin(included_pids)]
 
-        pid_to_row: dict[int, int] = {
-            int(pid): i for i, pid in enumerate(screening_data["PID"].unique())
-        }
-        screening_data["row"] = screening_data["PID"].map(pid_to_row)
+        # Add a new column, which indicates the last bin per person (PID)
+        logger.debug("Adding is_last column")
+        screening_data["is_last"] = (
+            screening_data.groupby("PID")["bin"].transform("max")
+            == screening_data["bin"]
+        )
 
         assert not screening_data.isna().values.any()
         assert screening_data["risk"].isin(range(1, 5)).all()
@@ -266,64 +280,50 @@ class DataManager:
 
         if update_inplace:
             self.screening_data = screening_data
-            self.pid_to_row = pid_to_row
             self.metadata |= metadata
         return (
             screening_data,
-            pid_to_row,
             metadata,
         )
 
-    def shape(self) -> tuple[int, int]:
+    def get_last_screening_bin(self) -> dict[int, int]:
+        """Get the bin of the last screening per person."""
         if self.screening_data is None:
             raise ValueError("Screening data is None!")
 
-        n_rows = self.screening_data["row"].max() + 1
-        n_cols = self.screening_data["bin"].max() + 1
-        return (n_rows, n_cols)
+        return dict(self.screening_data.groupby("PID")["bin"].agg("max"))
 
-    def data_as_coo_array(self) -> coo_array:
+    def get_feature_data(
+        self, columns: Sequence[str] | None = None, pids: Iterable | None = None
+    ) -> pd.DataFrame:
+        """Get the feature data for the given columns and pids.
+
+        Args:
+            columns: The columns to get. If None, will use the default columns.
+            pids: The pids to get. If None, will get all pids.
+
+        Example:
+            >>> features = data_manager.get_feature_data(pids=pid_to_row)
+            >>> feature_array = coo_array(
+            ...     (
+            ...         features["value"],
+            ...         (features["PID"].map(pid_to_row), features["feature"].map(feature_to_column)),
+            ...     ),
+            ...     shape=(len(pid_to_row), len(variable_to_column)),
+            ...     dtype="int8",
+            ... )
+        """
         if self.screening_data is None:
             raise ValueError("Screening data is None!")
+        columns = columns or ["has_positive", "has_negative", "has_hr", "has_hr_2"]
 
-        return coo_array(
-            (
-                self.screening_data["risk"],
-                (self.screening_data["row"], self.screening_data["bin"]),
-            ),
-            shape=self.shape(),
-            dtype="int8",
+        people_in_data = (
+            self.person_df[self.person_df.index.isin(pids)]
+            if pids is not None
+            else self.person_df
         )
-
-    def get_masked_data(self) -> tuple[coo_array, npt.NDArray, npt.NDArray]:
-        X = self.data_as_coo_array()
-        masked_X, t_pred, y_true = prediction_data(X.toarray())
-        masked_X = coo_array(masked_X)
-        masked_X.eliminate_zeros()  # type: ignore[attr-defined]
-        return masked_X, t_pred, y_true
-
-    def feature_data_as_coo_array(self, cols: list[str] | None = None) -> coo_array:
-        if self.pid_to_row is None:
-            raise ValueError("pid_to_row is None! Generate screening data first!")
-        cols = cols or ["has_positive", "has_negative", "has_hr", "has_hr_2"]
-
-        n_rows = self.shape()[0]
-        n_cols = len(cols)
-
-        # People included in the screening data filtering
-        people_in_data = self.person_df[
-            self.person_df.index.isin(self.pid_to_row.keys())
-        ]
-        features = (
-            people_in_data.reset_index().melt(id_vars="PID", value_vars=cols).dropna()
-        )
-        features["row"] = features["PID"].map(self.pid_to_row)
-        features["col_index"] = features["variable"].map(
-            {col: i for i, col in enumerate(cols)}
-        )
-
-        return coo_array(
-            (features["value"], (features["row"], features["col_index"])),
-            shape=(n_rows, n_cols),
-            dtype="int8",
+        return (
+            people_in_data.reset_index()
+            .melt(id_vars="PID", value_vars=columns, var_name="feature")
+            .dropna()
         )

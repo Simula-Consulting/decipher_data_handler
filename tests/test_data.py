@@ -3,11 +3,13 @@ import logging
 import operator
 from datetime import timedelta
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from scipy.sparse import coo_array
 
 from decipher.data import DataManager
 from decipher.data.data_manager import (
@@ -31,57 +33,67 @@ def data_manager() -> DataManager:
     return DataManager.read_from_csv(test_data_screening, test_data_dob)
 
 
-@pytest.mark.parametrize("min_screenings_to_person", [(0, 76), (2, 64), (3, 42)])
-def test_data_shape(
-    data_manager: DataManager, min_screenings_to_person: tuple[int, int]
-):
-    min_screenings, expected_number_of_people = min_screenings_to_person
-    filter_ = AtLeastNNonHPV(min_n=min_screenings)
-    data_manager.get_screening_data(filter_strategy=filter_, update_inplace=True)
-    assert data_manager.shape() == (
-        expected_number_of_people,
-        233,
-    )  # Correct shape of test file
-
-
-def test_get_observation_array(data_manager: DataManager):
-    with pytest.raises(ValueError):  # Screening data not implemented yet
-        data_manager.data_as_coo_array()
-    with pytest.raises(ValueError):  # Screening data not implemented yet
-        data_manager.get_screening_data()
-        data_manager.data_as_coo_array()
-    data_manager.get_screening_data(update_inplace=True)
-    data_manager.data_as_coo_array()
-
-
 @pytest.mark.parametrize("min_non_hpv_exams", [0, 2, 3])
-def test_get_feature_array(data_manager: DataManager, min_non_hpv_exams: int):
-    with pytest.raises(ValueError):  # Screening data not implemented yet
-        data_manager.feature_data_as_coo_array()
+def test_get_feature_data(data_manager: DataManager, min_non_hpv_exams: int):
     filter_ = AtLeastNNonHPV(
         min_n=min_non_hpv_exams
     )  # Some other value than default, to uncover assumptions
     data_manager.get_screening_data(filter_strategy=filter_, update_inplace=True)
-    feature_array = data_manager.feature_data_as_coo_array()
-    assert isinstance(data_manager.pid_to_row, dict), "Hmmm"
-    number_of_people = len(data_manager.pid_to_row)
-    number_of_features = 4
-    assert feature_array.shape == (number_of_people, number_of_features)
+
+    pids = np.random.choice(
+        data_manager.person_df.index,
+        int(0.7 * len(data_manager.person_df.index)),
+        replace=False,
+    )
+    columns = ["has_positive", "has_hr"]
+    features = data_manager.get_feature_data(pids=pids, columns=columns)
+
+    assert set(features["PID"]) == set(pids)
+    assert set(features["feature"]) == set(columns)
+    assert not features["value"].isna().any()
+
+    # Test that the recipe given in the example of the docstring works
+    pid_to_row = {pid: i for i, pid in enumerate(pids)}
+    feature_to_col = {feature: i for i, feature in enumerate(columns)}
+    feature_array = coo_array(
+        (
+            features["value"],
+            (features["PID"].map(pid_to_row), features["feature"].map(feature_to_col)),
+        ),
+        shape=(len(pid_to_row), len(feature_to_col)),
+        dtype="int8",
+    )
+
+    assert feature_array.nnz == len(features)
 
 
-def test_get_masked_array(data_manager: DataManager):
-    with pytest.raises(ValueError):  # Screening data not implemented yet
-        data_manager.get_masked_data()
+def test_get_last_screening_bin(data_manager: DataManager):
     data_manager.get_screening_data(update_inplace=True)
+    last_screening_bin = data_manager.get_last_screening_bin()
+    assert data_manager.screening_data is not None
 
-    masked_X, t_pred, y_true = data_manager.get_masked_data()
-    X = data_manager.data_as_coo_array()
+    for pid in data_manager.screening_data["PID"].unique():
+        assert (
+            last_screening_bin[pid]
+            == data_manager.screening_data[data_manager.screening_data["PID"] == pid][
+                "bin"
+            ].max()
+        )
 
-    X = X.toarray()
-    masked_X = masked_X.toarray()
-    for i, (t, y) in enumerate(zip(t_pred, y_true)):
-        assert X[i, t] == y
-        assert masked_X[i, t] == 0
+
+def test_get_screening_data(data_manager: DataManager):
+    data_manager.get_screening_data(update_inplace=True)
+    assert data_manager.screening_data is not None
+
+    assert data_manager.screening_data is not None
+    assert not data_manager.screening_data["risk"].isna().any()
+    assert data_manager.screening_data["risk"].isin(range(1, 5)).all()
+
+    last_screening_bin = data_manager.get_last_screening_bin()
+    for pid, group in data_manager.screening_data.groupby("PID"):
+        pid = cast(int, pid)
+        assert group["is_last"].sum() == 1
+        assert group[group["is_last"]]["bin"].item() == last_screening_bin[pid]
 
 
 @pytest.mark.parametrize(
@@ -105,14 +117,11 @@ def test_parquet(
     new_data_manager = DataManager.from_parquet(tmp_path, engine=parquet_engine)
     if initialize_screening_data:
         assert data_manager.screening_data is not None
-        assert data_manager.pid_to_row is not None
         assert data_manager.screening_data.equals(
             new_data_manager.screening_data  # type: ignore[arg-type]
         )
-        assert data_manager.pid_to_row == new_data_manager.pid_to_row
     else:
         assert new_data_manager.screening_data is None
-        assert new_data_manager.pid_to_row is None
     assert data_manager.person_df.equals(new_data_manager.person_df)
     assert data_manager.exams_df.equals(new_data_manager.exams_df)
 
@@ -173,10 +182,13 @@ def test_filter(data_manager: DataManager, filter_: PersonFilter):
 )
 def test_combine_filter(data_manager: DataManager, filters: list[PersonFilter]):
     combined_filter = CombinePersonFilter(filters)
-    _, pid_to_row, _ = data_manager.get_screening_data(filter_strategy=combined_filter)
-    pids = set(pid_to_row.keys())
+    screening_data, _ = data_manager.get_screening_data(filter_strategy=combined_filter)
+    pids = set(screening_data["PID"])
     for filter in filters:
-        assert pids <= set(data_manager.get_screening_data(filter_strategy=filter)[1])
+        other_filter_screening_data, _ = data_manager.get_screening_data(
+            filter_strategy=filter
+        )
+        assert pids <= set(other_filter_screening_data["PID"])
 
 
 @pytest.mark.parametrize("min_n_exams", [0, 2, 4])
@@ -184,8 +196,9 @@ def test_filter_2(data_manager: DataManager, min_n_exams: int):
     data_manager.get_screening_data(
         filter_strategy=AtLeastNNonHPV(min_n=min_n_exams), update_inplace=True
     )
-    X = data_manager.data_as_coo_array().toarray()
-    counts_per_person = np.count_nonzero(X, axis=1)
+    assert data_manager.screening_data is not None
+
+    counts_per_person = data_manager.screening_data["PID"].value_counts()
     assert (counts_per_person >= min_n_exams).all()
 
 
