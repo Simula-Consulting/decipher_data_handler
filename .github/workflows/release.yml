@@ -3,7 +3,6 @@ name: Release
 on:
   push:
     branches: [ "main" ]
-  pull_request:
 
 env:
   POETRY_VIRTUALENVS_PREFER_ACTIVE_PYTHON: true
