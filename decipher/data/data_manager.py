@@ -2,6 +2,7 @@ import functools
 import json
 import operator
 from abc import ABC, abstractmethod
+from datetime import timedelta
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Callable, Iterable, Literal, Sequence
@@ -51,6 +52,45 @@ class PersonFilter(ABC):
 
     def metadata(self) -> dict:
         return {"type": "generic_filter"}
+
+
+class MaximumTimeSeparation(PersonFilter):
+    """Filter people where the time between last two exams is less than `max_time`.
+
+    This is useful for assuring there is sufficiently little time the last non-masked
+    exam and the exam we attempt to predict for.
+
+    People with less than two screenings are disregarded.
+
+    Arguments:
+        max_time: Maximum time between last two exams.
+
+    Warning:
+        Do note that this will tend to bias our selection, as time between exams is not
+        uniformly distributed.
+    """
+
+    def __init__(self, max_time_difference: timedelta) -> None:
+        self.max_time_difference = max_time_difference
+
+    def filter(
+        self, person_df: pd.DataFrame, screening_df: pd.DataFrame
+    ) -> Iterable[int] | "pd.Series[int]":
+        number_of_screenings = screening_df["PID"].value_counts()
+        more_than_one = number_of_screenings[number_of_screenings > 1].index
+        time_difference = (
+            screening_df[screening_df["PID"].isin(more_than_one)]
+            .sort_values("age", ascending=False)
+            .groupby("PID")["age"]
+            .agg(lambda ages: ages.iloc[0] - ages.iloc[1])
+        )
+        return time_difference[time_difference <= self.max_time_difference].index
+
+    def metadata(self) -> dict:
+        return {
+            "type": "max_time_difference",
+            "max_time_difference": str(self.max_time_difference),
+        }
 
 
 class AtLeastNNonHPV(PersonFilter):
