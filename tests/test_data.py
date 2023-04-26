@@ -15,6 +15,7 @@ from decipher.data import DataManager
 from decipher.data.data_manager import (
     AtLeastNNonHPV,
     CombinePersonFilter,
+    MaximumTimeSeparation,
     OperatorFilter,
     PersonFilter,
     TrueFields,
@@ -200,6 +201,32 @@ def test_filter_2(data_manager: DataManager, min_n_exams: int):
 
     counts_per_person = data_manager.screening_data["PID"].value_counts()
     assert (counts_per_person >= min_n_exams).all()
+
+
+@settings(suppress_health_check=(HealthCheck.function_scoped_fixture,))
+@given(
+    max_time_difference=st.timedeltas(
+        min_value=timedelta(days=0), max_value=timedelta(days=365 * 7)
+    )
+)
+def test_maximum_time_separation_filter(
+    data_manager: DataManager, max_time_difference: timedelta
+):
+    # max_time_difference = timedelta(days=365 * 2)
+    filter_ = MaximumTimeSeparation(max_time_difference=max_time_difference)
+
+    pids = filter_.filter(data_manager.person_df, data_manager.exams_df)
+
+    filtered_exams = data_manager.exams_df[data_manager.exams_df["PID"].isin(pids)]
+    assert (filtered_exams["PID"].value_counts() >= 2).all()
+
+    differences = (
+        filtered_exams.groupby("PID")["age"]
+        .nlargest(2)
+        .groupby("PID")
+        .agg(lambda x: max(x) - min(x))
+    )
+    assert (differences <= max_time_difference).all()
 
 
 def test_parquet_version(data_manager: DataManager, tmp_path: Path):
