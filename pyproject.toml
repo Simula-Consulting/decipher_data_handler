@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "decipher"
-version = "0.1.21"
+version = "0.1.23"
 description = "Utilities for Decipher"
 authors = ["Thorvald Molthe Ballestad <thorvald@simula.no>"]
 readme = "README.md"
@@ -10,12 +10,12 @@ python = ">=3.10,<3.12"
 pandas = "^1.5.0"
 numpy = "^1.24.0"
 scikit-learn = "^1.2.0"
-pandas-stubs = "^1.5.3.0"
 PyYAML = "^6.0"
 types-PyYAML = "^6.0.12.0"
 
 pyarrow = {version = "^11.0.0", optional = true}
 fastparquet = {version = "^2023.2.0", optional = true}
+loguru = "0.6.0"
 
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]  # For parquet support
@@ -28,9 +28,12 @@ pylint = "^2.17.1"
 mypy = "^1.1.1"
 pytest = "^7.2.2"
 hypothesis = "^6.70.1"
+pandas-stubs = "^1.5.3.0"
 
+[tool.poetry.group.test]
+optional = true
 
-[tool.poetry.group.sparse.dependencies]
+[tool.poetry.group.test.dependencies]
 scipy = "^1.10.1"
 
 [tool.isort]
