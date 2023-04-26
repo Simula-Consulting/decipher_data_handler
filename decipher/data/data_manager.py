@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from datetime import timedelta
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any, Callable, Iterable, Literal, Sequence
+from typing import Any, Callable, Iterable, Literal
 
 import pandas as pd
 from loguru import logger
@@ -334,7 +334,7 @@ class DataManager:
         return dict(self.screening_data.groupby("PID")["bin"].agg("max"))
 
     def get_feature_data(
-        self, columns: Sequence[str] | None = None, pids: Iterable | None = None
+        self, columns: Iterable[str] | None = None, pids: Iterable | None = None
     ) -> pd.DataFrame:
         """Get the feature data for the given columns and pids.
 
@@ -355,7 +355,16 @@ class DataManager:
         """
         if self.screening_data is None:
             raise ValueError("Screening data is None!")
-        columns = columns or ["has_positive", "has_negative", "has_hr", "has_hr_2"]
+        columns = (
+            list(columns)
+            if columns is not None
+            else [
+                "has_positive",
+                "has_negative",
+                "has_hr",
+                "has_hr_2",
+            ]
+        )
 
         people_in_data = (
             self.person_df[self.person_df.index.isin(pids)]
