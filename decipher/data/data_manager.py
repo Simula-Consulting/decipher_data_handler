@@ -123,6 +123,32 @@ class TrueFields(PersonFilter):
         return {"type": "true fields", "fields": self.fields}
 
 
+class SaneAgeFilter(PersonFilter):
+    """Filter out people with unreasonable exam ages.
+
+    For people where the age of the exam is either very young or very old, remove them.
+    """
+
+    def __init__(self, min_age: timedelta, max_age: timedelta):
+        self.min_age = min_age
+        self.max_age = max_age
+
+    def filter(
+        self, person_df: pd.DataFrame, screening_df: pd.DataFrame
+    ) -> Iterable[int] | "pd.Series[int]":
+        return person_df[
+            (person_df["age_min"] >= self.min_age)
+            & (person_df["age_max"] <= self.max_age)
+        ].index
+
+    def metadata(self) -> dict:
+        return {
+            "type": "sane_age_filter",
+            "min_age": str(self.min_age),
+            "max_age": str(self.max_age),
+        }
+
+
 class OperatorFilter(PersonFilter):
     """Arbitrary operator comparison.
 
