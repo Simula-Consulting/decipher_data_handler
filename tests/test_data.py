@@ -209,15 +209,20 @@ def test_filter_2(data_manager: DataManager, min_n_exams: int):
         min_value=timedelta(days=0), max_value=timedelta(days=365 * 7)
     )
 )
-def test_maximum_time_separation_filter(
+def test_maximum_time_separation_filter_from_timedelta(
     data_manager: DataManager, max_time_difference: timedelta
 ):
-    # max_time_difference = timedelta(days=365 * 2)
-    filter_ = MaximumTimeSeparation(max_time_difference=max_time_difference)
+    data_manager.get_screening_data(update_inplace=True)
 
-    pids = filter_.filter(data_manager.person_df, data_manager.exams_df)
+    filter_ = MaximumTimeSeparation.from_time_delta(
+        max_time_difference=max_time_difference, days_per_bin=90
+    )
 
-    filtered_exams = data_manager.exams_df[data_manager.exams_df["PID"].isin(pids)]
+    pids = filter_.filter(data_manager.person_df, data_manager.screening_data)
+
+    filtered_exams = data_manager.exams_df[
+        data_manager.exams_df["PID"].isin(pids)
+    ].dropna(subset=["risk"])
     assert (filtered_exams["PID"].value_counts() >= 2).all()
 
     differences = (
@@ -226,7 +231,45 @@ def test_maximum_time_separation_filter(
         .groupby("PID")
         .agg(lambda x: max(x) - min(x))
     )
-    assert (differences <= max_time_difference).all()
+    bin_width = timedelta(days=90)
+    assert (differences < max_time_difference + bin_width).all()
+
+
+@settings(suppress_health_check=(HealthCheck.function_scoped_fixture,))
+@given(max_bins=st.integers(min_value=1, max_value=10))
+def test_maximum_time_separation(
+    data_manager: DataManager,
+    max_bins: int,
+):
+    data_manager.get_screening_data(update_inplace=True)
+    assert data_manager.screening_data is not None
+
+    filter_ = MaximumTimeSeparation(max_bins)
+
+    pids = filter_.filter(data_manager.person_df, data_manager.screening_data)
+
+    assert (
+        data_manager.screening_data.query("PID in @pids")
+        .sort_values("bin")
+        .groupby("PID")["bin"]
+        .apply(lambda bins: bins.iloc[-1] - bins.iloc[-2])
+        <= max_bins
+    ).all()
+
+    filtered_exams = data_manager.exams_df[
+        data_manager.exams_df["PID"].isin(pids)
+    ].dropna(subset=["risk"])
+    assert (filtered_exams["PID"].value_counts() >= 2).all()
+
+    differences = (
+        filtered_exams.groupby("PID")["age"]
+        .nlargest(2)
+        .groupby("PID")
+        .agg(lambda x: max(x) - min(x))
+    )
+    days_per_bin = 90
+    bin_width = timedelta(days=days_per_bin)
+    assert (differences < timedelta(days=max_bins * days_per_bin) + bin_width).all()
 
 
 def test_parquet_version(data_manager: DataManager, tmp_path: Path):

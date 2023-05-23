@@ -63,15 +63,25 @@ class MaximumTimeSeparation(PersonFilter):
     People with less than two screenings are disregarded.
 
     Arguments:
-        max_time: Maximum time between last two exams.
+        max_time: Maximum time between last two exams, in number of bins.
 
     Warning:
         Do note that this will tend to bias our selection, as time between exams is not
         uniformly distributed.
     """
 
-    def __init__(self, max_time_difference: timedelta) -> None:
+    def __init__(self, max_time_difference: int) -> None:
         self.max_time_difference = max_time_difference
+
+    @classmethod
+    def from_time_delta(cls, max_time_difference: timedelta, days_per_bin: int):
+        """Create a MaximumTimeSeparation from a timedelta.
+
+        Requires days_per_bin to be known.
+        By default, the days_per_bin is 30 (days per month) * 3 (months per bin) = 90.
+        See `decipher.processing.transformers.ObservationMatrix` for more information.
+        """
+        return cls(int(max_time_difference / timedelta(days=days_per_bin)))
 
     def filter(
         self, person_df: pd.DataFrame, screening_df: pd.DataFrame
@@ -80,8 +90,8 @@ class MaximumTimeSeparation(PersonFilter):
         more_than_one = number_of_screenings[number_of_screenings > 1].index
         time_difference = (
             screening_df[screening_df["PID"].isin(more_than_one)]
-            .sort_values("age", ascending=False)
-            .groupby("PID")["age"]
+            .sort_values("bin", ascending=False)
+            .groupby("PID")["bin"]
             .agg(lambda ages: ages.iloc[0] - ages.iloc[1])
         )
         return time_difference[time_difference <= self.max_time_difference].index
