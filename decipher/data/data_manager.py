@@ -299,6 +299,7 @@ class DataManager:
         self,
         filter_strategy: PersonFilter | None = None,
         update_inplace: bool = False,
+        months_per_bin: int = 3,
     ) -> tuple[pd.DataFrame, dict]:
         """Compute screening data df from exams and person df.
 
@@ -336,7 +337,7 @@ class DataManager:
         if filter_strategy is None:
             filter_strategy = AtLeastNNonHPV(min_n=2)
 
-        observation_data_transformer = ObservationMatrix()
+        observation_data_transformer = ObservationMatrix(months_per_bin=months_per_bin)
         screening_data: pd.DataFrame = observation_data_transformer.fit_transform(
             self.exams_df
         )
