@@ -1,19 +1,15 @@
-import itertools
-import logging
 from dataclasses import dataclass
 from datetime import timedelta
-from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, cast
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from loguru import logger
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from decipher.exam_data import Diagnosis, ExamTypes, risk_mapping
-
-logger = logging.getLogger(__name__)
 
 
 class PandasTransformerMixin(TransformerMixin):
@@ -52,6 +48,9 @@ class CleanData(BaseEstimator, PandasTransformerMixin):
                 raise ValueError(
                     f"Column {column} must have dtype {expected_type}, but it is {actual_type}"
                 )
+            logger.debug(
+                f"Column {column} has dtype {actual_type}, expected {expected_type}. {actual_type == expected_type}"
+            )
 
         return self
 
@@ -211,11 +210,31 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
 
     def __init__(self, base_df: pd.DataFrame | None = None) -> None:
         self.base_df = base_df
+        self.high_risk_hpv_types: list[str | int] = [
+            16,
+            8,
+            45,
+            31,
+            33,
+            35,
+            52,
+            58,
+            39,
+            51,
+            56,
+            59,
+            68,
+            "HR",
+            "HF",
+            "HD",
+            "HE",
+        ]
+        self.low_risk_hpv_types: list[str | int] = [11, 6]
 
     def fit(self, X: pd.DataFrame, y=None):
         CleanData(
             dtypes={
-                "PID": "int",
+                "PID": "int64",
                 "exam_type": None,
                 "exam_date": "datetime64[ns]",
                 "age": "timedelta64[ns]",
@@ -231,84 +250,98 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         person_df = person_df.join(X.groupby("PID")["FOEDT"].agg("first"), on="PID")
 
         if self.base_df is not None:
-            person_df = person_df.join(self._get_hpv_features())
+            person_df = person_df.join(self._get_hpv_features(X, person_df))
         return person_df
 
-    def _get_hpv_features(self) -> pd.DataFrame:
-        """Construct a DataFrame with relevant HPV features.
+    def _get_hpv_features(
+        self, exams_df: pd.DataFrame, person_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Construct and return a DataFrame with a variety of HPV related features.
 
-        Warning:
-          As it is currently implemented, there might be some confusing behavior when
-          for example there are multiple HPV exams at the same time point.
-          For example, if a person has two HPV exams at the same time, one giving
-          positive and one giving negative, they will both be counted in the
-          'has_positive' and 'has_negative' features.
+        The features include:
+        - 'has_positive': Count of positive HPV results per PID.
+        - 'has_negative': Count of negative HPV results per PID.
+        - 'number_of_screenings': Count of screenings per PID.
+        - 'age_last_exam': Age at last exam per PID.
+        - 'hr_count': Count of high-risk HPV types per PID.
+        - 'lr_count': Count of low-risk HPV types per PID.
+        - 'age_first_hr': Age at first detection of high-risk HPV types per PID.
+        - 'age_first_lr': Age at first detection of low-risk HPV types per PID.
+        - 'age_first_positive': Age at first positive HPV result per PID.
+        - 'age_first_negative': Age at first negative HPV result per PID.
+
+        Arguments:
+          - exams_df - Should have 'PID', 'risk', 'age' and 'exam_diagnosis' fields.
+          - person_df - Should have 'PID' and 'FOEDT' fields.
         """
         if self.base_df is None:
             raise ValueError()
         hpv_details_df: pd.DataFrame = HPVResults().fit_transform(self.base_df)
 
-        def _true_where_result_match(match: str, field_to_query: str = "hpvResultat"):
-            pids = self.base_df.query(f"{field_to_query} == '{match}'")["PID"].unique()  # type: ignore[union-attr]
-            values = True
-            return pids, values
+        feature_df = pd.DataFrame(index=self.base_df["PID"].unique())
 
-        features: list[PersonFeature] = [
-            PersonFeature(
-                "has_positive",
-                False,
-                partial(_true_where_result_match, match="positiv"),
-            ),
-            PersonFeature(
-                "has_negative",
-                False,
-                partial(_true_where_result_match, match="negativ"),
-            ),
-            PersonFeature(
-                "has_hr",
-                None,
-                partial(self._get_people_with_hr_hpv, hpv_details_df=hpv_details_df),
-            ),
-            PersonFeature(
-                "has_hr_2",
-                None,
-                partial(
-                    self._get_people_with_hr_hpv,
-                    hpv_details_df=hpv_details_df,
-                    hr_subgroups=[0, 1],
-                ),
-            ),
-        ]
+        def _count_where_result_match(match: str, field_to_query: str = "hpvResultat"):
+            # MyPy does not infer the correct type of self.base_df inside the closure
+            # even though we have a guard above.
+            counts = (
+                cast(pd.DataFrame, self.base_df)
+                .query(f"{field_to_query} == '{match}'")["PID"]
+                .value_counts()
+            )
+            return counts
 
-        feature_df = pd.DataFrame(
-            index=self.base_df["PID"].unique(),
-            data={feature.name: feature.initial_value for feature in features},
-            dtype="boolean",
+        def age_first_field_match(match: str, field_to_query: str = "exam_diagnosis"):
+            ages = (
+                exams_df.query(f"{field_to_query} == '{match}'")
+                .groupby("PID")["age"]
+                .agg("min")
+                .apply(lambda x: x.days / 365)
+            )
+            return ages
+
+        def _hpv_type_counts(hr_types: list[str | int]):
+            """Get pid-counts for hr_types"""
+            pid_counts = hpv_details_df[hpv_details_df["value"].isin(hr_types)][
+                "PID"
+            ].value_counts()
+            return pid_counts
+
+        def _age_first_hr(
+            hr_types: list[str | int],
+        ):
+            """Get pid-age for hr_types"""
+            dates = (
+                hpv_details_df[hpv_details_df["value"].isin(hr_types)]
+                .groupby("PID")["hpvDate"]
+                .agg("min")
+            )
+            ages = (dates - person_df["FOEDT"]).apply(lambda x: x.days / 365)
+            return ages
+
+        feature_df["count_positive"] = _count_where_result_match(
+            match="positiv"
+        ).reindex(feature_df.index, fill_value=0)
+        feature_df["count_negative"] = _count_where_result_match(
+            match="negativ"
+        ).reindex(feature_df.index, fill_value=0)
+        feature_df["number_of_screenings"] = exams_df.dropna(subset=["risk"])[
+            "PID"
+        ].value_counts()
+        feature_df["age_last_exam"] = (
+            exams_df.groupby("PID")["age"].agg("max").apply(lambda x: x.days / 365)
         )
-
-        for feature in features:
-            pids, values = feature.getter()
-            feature_df.loc[pids, feature.name] = values
+        feature_df["hr_count"] = _hpv_type_counts(
+            hr_types=self.high_risk_hpv_types
+        ).reindex(feature_df.index, fill_value=0)
+        feature_df["lr_count"] = _hpv_type_counts(
+            hr_types=self.low_risk_hpv_types
+        ).reindex(feature_df.index, fill_value=0)
+        feature_df["age_first_hr"] = _age_first_hr(hr_types=self.high_risk_hpv_types)
+        feature_df["age_first_lr"] = _age_first_hr(hr_types=self.low_risk_hpv_types)
+        feature_df["age_first_positive"] = age_first_field_match(match="positiv")
+        feature_df["age_first_negative"] = age_first_field_match(match="negativ")
 
         return feature_df
-
-    def _get_people_with_hr_hpv(
-        self, hpv_details_df: pd.DataFrame, hr_subgroups: list[int] | None = None
-    ):
-        # Risky HPV types, grouped from most risky group
-        risky_hpv_types: list[list[int | str]] = [
-            [16, 18, 45],
-            ["HR"],
-            [31, 33, 35, 52, 58],
-        ]
-        if hr_subgroups is None:
-            hr_subgroups = list(range(len(risky_hpv_types)))
-        hr_types: Iterable[int | str] = itertools.chain.from_iterable(
-            risky_hpv_types[subgroup] for subgroup in hr_subgroups
-        )
-        pids = hpv_details_df[hpv_details_df["value"].isin(hr_types)]["PID"].unique()
-        values = True
-        return pids, values
 
 
 class HPVResults(BaseEstimator, PandasTransformerMixin):
