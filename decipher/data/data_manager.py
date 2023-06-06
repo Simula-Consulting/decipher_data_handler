@@ -390,8 +390,6 @@ class DataManager:
             ...     dtype="int8",
             ... )
         """
-        if self.screening_data is None:
-            raise ValueError("Screening data is None!")
         columns = (
             list(columns)
             if columns is not None
@@ -402,6 +400,10 @@ class DataManager:
                 "has_hr_2",
             ]
         )
+        if not set(columns).issubset(self.person_df.columns):
+            raise ValueError(
+                f"{set(columns) - set(self.person_df.columns)} are not in the person_df"
+            )
 
         people_in_data = (
             self.person_df[self.person_df.index.isin(pids)]
