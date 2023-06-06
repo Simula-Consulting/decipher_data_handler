@@ -210,6 +210,26 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
 
     def __init__(self, base_df: pd.DataFrame | None = None) -> None:
         self.base_df = base_df
+        self.high_risk_hpv_types: list[str | int] = [
+            16,
+            8,
+            45,
+            31,
+            33,
+            35,
+            52,
+            58,
+            39,
+            51,
+            56,
+            59,
+            68,
+            "HR",
+            "HF",
+            "HD",
+            "HE",
+        ]
+        self.low_risk_hpv_types: list[str | int] = [11, 6]
 
     def fit(self, X: pd.DataFrame, y=None):
         CleanData(
@@ -279,7 +299,7 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
             )
             return ages
 
-        def _hr_type_counts(hr_types: list[str | int]):
+        def _hpv_type_counts(hr_types: list[str | int]):
             """Get pid-counts for hr_types"""
             pid_counts = hpv_details_df[hpv_details_df["value"].isin(hr_types)][
                 "PID"
@@ -310,14 +330,14 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         feature_df["age_last_exam"] = (
             exams_df.groupby("PID")["age"].agg("max").apply(lambda x: x.days / 365)
         )
-        feature_df["hr_count"] = _hr_type_counts(hr_types=[16, "HR"]).reindex(
-            feature_df.index, fill_value=0
-        )
-        feature_df["lr_count"] = _hr_type_counts(hr_types=[18, 36, 32]).reindex(
-            feature_df.index, fill_value=0
-        )
-        feature_df["age_first_hr"] = _age_first_hr(hr_types=[16, "HR"])
-        feature_df["age_first_lr"] = _age_first_hr(hr_types=[18, 36, 32])
+        feature_df["hr_count"] = _hpv_type_counts(
+            hr_types=self.high_risk_hpv_types
+        ).reindex(feature_df.index, fill_value=0)
+        feature_df["lr_count"] = _hpv_type_counts(
+            hr_types=self.low_risk_hpv_types
+        ).reindex(feature_df.index, fill_value=0)
+        feature_df["age_first_hr"] = _age_first_hr(hr_types=self.high_risk_hpv_types)
+        feature_df["age_first_lr"] = _age_first_hr(hr_types=self.low_risk_hpv_types)
         feature_df["age_first_positive"] = age_first_field_match(match="positiv")
         feature_df["age_first_negative"] = age_first_field_match(match="negativ")
 
