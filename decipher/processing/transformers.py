@@ -195,6 +195,28 @@ class RiskAdder(BaseEstimator, PandasTransformerMixin):
         return X
 
 
+def hpv_count_last_n_years(
+    last_exam_date: pd.Series,
+    hpv_details_df: pd.DataFrame,
+    hr_types: list[str | int],
+    n: int = 5,
+) -> pd.Series:
+    """Count the number of high risk HPV types in the last 5 years before the last_exam_date.
+
+    Args:
+        last_exam_date: Series with the last exam date for each person (PID as index)
+        hpv_details_df: DataFrame with the HPV details. Must have the columns "PID", "hpvDate" and "value"
+        hr_types: List of high risk HPV types
+    """
+    if not hpv_details_df["PID"].isin(last_exam_date.index).all():
+        raise ValueError("Some PIDs from hpv_details are not in last_exam_dates")
+    n_years = timedelta(days=n * 365)
+    mask = hpv_details_df["hpvDate"] >= hpv_details_df["PID"].map(last_exam_date - n_years)  # type: ignore[operator]
+    return hpv_details_df[mask & hpv_details_df["value"].isin(hr_types)][
+        "PID"
+    ].value_counts()
+
+
 class PersonStats(BaseEstimator, PandasTransformerMixin):
     """Take an exam DF, and generate stats per person"""
 
@@ -259,6 +281,7 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         - 'age_first_lr': Age at first detection of low-risk HPV types per PID.
         - 'age_first_positive': Age at first positive HPV result per PID.
         - 'age_first_negative': Age at first negative HPV result per PID.
+        - 'hr_count_last_5': Count of high-risk HPV types in the last 5 years per PID.
 
         Arguments:
           - exams_df - Should have 'PID', 'risk', 'age' and 'exam_diagnosis' fields.
@@ -330,6 +353,11 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         feature_df["age_first_lr"] = _age_first_hr(hr_types=self.low_risk_hpv_types)
         feature_df["age_first_positive"] = age_first_field_match(match="positiv")
         feature_df["age_first_negative"] = age_first_field_match(match="negativ")
+        feature_df["hr_count_last_5_years"] = hpv_count_last_n_years(
+            last_exam_date=person_df["age_max"] + person_df["FOEDT"],
+            hpv_details_df=hpv_details_df,
+            hr_types=self.high_risk_hpv_types,
+        ).reindex(feature_df.index, fill_value=0)
 
         return feature_df
 
