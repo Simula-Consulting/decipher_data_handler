@@ -281,6 +281,7 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         - 'age_first_lr': Age at first detection of low-risk HPV types per PID.
         - 'age_first_positive': Age at first positive HPV result per PID.
         - 'age_first_negative': Age at first negative HPV result per PID.
+        - 'hr_count_last_5': Count of high-risk HPV types in the last 5 years per PID.
 
         Arguments:
           - exams_df - Should have 'PID', 'risk', 'age' and 'exam_diagnosis' fields.
@@ -352,6 +353,11 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         feature_df["age_first_lr"] = _age_first_hr(hr_types=self.low_risk_hpv_types)
         feature_df["age_first_positive"] = age_first_field_match(match="positiv")
         feature_df["age_first_negative"] = age_first_field_match(match="negativ")
+        feature_df["hr_count_last_5_years"] = hpv_count_last_n_years(
+            last_exam_date=person_df["age_max"] + person_df["FOEDT"],
+            hpv_details_df=hpv_details_df,
+            hr_types=self.high_risk_hpv_types,
+        ).reindex(feature_df.index, fill_value=0)
 
         return feature_df
 
