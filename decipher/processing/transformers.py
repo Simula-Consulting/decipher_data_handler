@@ -195,6 +195,28 @@ class RiskAdder(BaseEstimator, PandasTransformerMixin):
         return X
 
 
+def hpv_count_last_n_years(
+    last_exam_date: pd.Series,
+    hpv_details_df: pd.DataFrame,
+    hr_types: list[str | int],
+    n: int = 5,
+) -> pd.Series:
+    """Count the number of high risk HPV types in the last 5 years before the last_exam_date.
+
+    Args:
+        last_exam_date: Series with the last exam date for each person (PID as index)
+        hpv_details_df: DataFrame with the HPV details. Must have the columns "PID", "hpvDate" and "value"
+        hr_types: List of high risk HPV types
+    """
+    if not hpv_details_df["PID"].isin(last_exam_date.index).all():
+        raise ValueError("Some PIDs from hpv_details are not in last_exam_dates")
+    n_years = timedelta(days=n * 365)
+    mask = hpv_details_df["hpvDate"] >= hpv_details_df["PID"].map(last_exam_date - n_years)  # type: ignore[operator]
+    return hpv_details_df[mask & hpv_details_df["value"].isin(hr_types)][
+        "PID"
+    ].value_counts()
+
+
 class PersonStats(BaseEstimator, PandasTransformerMixin):
     """Take an exam DF, and generate stats per person"""
 
