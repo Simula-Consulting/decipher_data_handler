@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, cast
@@ -194,15 +193,6 @@ class RiskAdder(BaseEstimator, PandasTransformerMixin):
             .astype("Int64")
         )
         return X
-
-
-@dataclass
-class PersonFeature:
-    """Helper class for PersonStats"""
-
-    name: str
-    initial_value: Any
-    getter: Callable
 
 
 class PersonStats(BaseEstimator, PandasTransformerMixin):
