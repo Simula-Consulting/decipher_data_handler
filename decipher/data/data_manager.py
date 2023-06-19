@@ -353,7 +353,10 @@ class DataManager:
 
         assert not screening_data.isna().values.any()
         assert screening_data["risk"].isin(range(1, 5)).all()
-        metadata = {"screenings_filters": filter_strategy.metadata()}
+        metadata = {
+            "screenings_filters": filter_strategy.metadata(),
+            "bins": self._format_screening_bins(observation_data_transformer.bins),
+        }
 
         if update_inplace:
             self.screening_data = screening_data
@@ -362,6 +365,15 @@ class DataManager:
             screening_data,
             metadata,
         )
+
+    @staticmethod
+    def _format_screening_bins(bins) -> list[float]:
+        """Format the bins of observation_data_transformer to be suitable for the metadata."""
+
+        def timedelta_to_years(timedelta) -> float:
+            return timedelta.days / 365
+
+        return [round(years, 3) for years in map(timedelta_to_years, bins.tolist())]
 
     def get_last_screening_bin(self) -> dict[int, int]:
         """Get the bin of the last screening per person."""

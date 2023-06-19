@@ -86,6 +86,9 @@ def test_get_screening_data(data_manager: DataManager):
     data_manager.get_screening_data(update_inplace=True)
     assert data_manager.screening_data is not None
 
+    # Check that the metadata is json serializable
+    json.dumps(data_manager.metadata)
+
     assert data_manager.screening_data is not None
     assert not data_manager.screening_data["risk"].isna().any()
     assert data_manager.screening_data["risk"].isin(range(1, 5)).all()
