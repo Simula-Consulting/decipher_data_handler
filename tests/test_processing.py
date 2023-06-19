@@ -253,33 +253,37 @@ def date_time_strategy():
     return st.datetimes(min_value=datetime(2010, 1, 1), max_value=datetime(2023, 1, 1))
 
 
-# @given(
-#     last_exam_dates=st.dictionaries(keys=pid_strategy, values=date_time_strategy()),
-#     hr_types=st.lists(hpv_type_strategy, min_size=1),
-#     data_strategy=st.data(),
-#     n=st.integers(min_value=1, max_value=10),
-# )
-# def test_hr_count_last_n_years(last_exam_dates, hr_types, data_strategy, n):
-#     hpv_results = [
-#         (
-#             pid,
-#             data_strategy.draw(date_time_strategy()),
-#             data_strategy.draw(hpv_type_strategy),
-#         )
-#         for pid in last_exam_dates
-#     ]
+@given(
+    last_dates=st.dictionaries(
+        keys=pid_strategy, values=date_time_strategy(), min_size=1
+    ),
+    data_strategy=st.data(),
+    time_window=st.timedeltas(
+        min_value=timedelta(days=1), max_value=timedelta(days=5 * 365)
+    ),
+)
+def test_count_in_time_window(last_dates, data_strategy, time_window):
+    unique_pids = sorted(last_dates)  # Sorted to make sure the test is reproducible
 
-#     last_exam_date = pd.Series(last_exam_dates, dtype="datetime64[ns]")
-#     hpv_details_df = pd.DataFrame(hpv_results, columns=["PID", "hpvDate", "value"])
-#     result = hpv_count_last_n_years(last_exam_date, hpv_details_df, hr_types, n)
+    sample_pids = data_strategy.draw(st.lists(st.sampled_from(unique_pids), min_size=1))
+    sample_times = data_strategy.draw(
+        st.lists(
+            date_time_strategy(), min_size=len(sample_pids), max_size=len(sample_pids)
+        ),
+    )
 
-#     for pid, count in result.items():
-#         assert count == len(
-#             [
-#                 id
-#                 for (id, date, type) in hpv_results
-#                 if id == pid
-#                 and date >= last_exam_dates[pid] - timedelta(days=n * 365)
-#                 and type in hr_types
-#             ]
-#         ), "Count of HPV types should match expected value"
+    result = PersonStats.count_in_time_window(
+        times=pd.DataFrame({"PID": sample_pids, "time": sample_times}),
+        last_date=pd.Series(last_dates, dtype="datetime64[ns]"),
+        time_window=time_window,
+    )
+
+    for pid, count in result.items():
+        assert count == len(
+            [
+                id
+                for id, date in zip(sample_pids, sample_times)
+                if id == pid
+                and last_dates[pid] >= date >= last_dates[pid] - time_window
+            ]
+        )
