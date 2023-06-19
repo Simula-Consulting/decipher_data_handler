@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "decipher"
-version = "0.1.30"
+version = "0.1.31"
 description = "Utilities for Decipher"
 authors = ["Thorvald Molthe Ballestad <thorvald@simula.no>"]
 readme = "README.md"

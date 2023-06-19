@@ -18,12 +18,7 @@ from decipher.processing.pipeline import (
     read_raw_df,
     write_to_csv,
 )
-from decipher.processing.transformers import (
-    HPVResults,
-    ObservationMatrix,
-    PersonStats,
-    hpv_count_last_n_years,
-)
+from decipher.processing.transformers import HPVResults, ObservationMatrix, PersonStats
 
 logger = logging.getLogger(__name__)
 
@@ -203,13 +198,10 @@ def test_person_stats_w_features():
         "count_negative",
         "number_of_screenings",
         "age_last_exam",
-        "hr_count",
-        "lr_count",
-        "age_first_hr",
-        "age_first_lr",
         "age_first_positive",
         "age_first_negative",
-        "hr_count_last_5_years",
+        "count_positive_last_5_years",
+        "count_negative_last_5_years",
     }
     assert set(person_df.columns) == expected_columns
 
@@ -261,33 +253,33 @@ def date_time_strategy():
     return st.datetimes(min_value=datetime(2010, 1, 1), max_value=datetime(2023, 1, 1))
 
 
-@given(
-    last_exam_dates=st.dictionaries(keys=pid_strategy, values=date_time_strategy()),
-    hr_types=st.lists(hpv_type_strategy, min_size=1),
-    data_strategy=st.data(),
-    n=st.integers(min_value=1, max_value=10),
-)
-def test_hr_count_last_n_years(last_exam_dates, hr_types, data_strategy, n):
-    hpv_results = [
-        (
-            pid,
-            data_strategy.draw(date_time_strategy()),
-            data_strategy.draw(hpv_type_strategy),
-        )
-        for pid in last_exam_dates
-    ]
+# @given(
+#     last_exam_dates=st.dictionaries(keys=pid_strategy, values=date_time_strategy()),
+#     hr_types=st.lists(hpv_type_strategy, min_size=1),
+#     data_strategy=st.data(),
+#     n=st.integers(min_value=1, max_value=10),
+# )
+# def test_hr_count_last_n_years(last_exam_dates, hr_types, data_strategy, n):
+#     hpv_results = [
+#         (
+#             pid,
+#             data_strategy.draw(date_time_strategy()),
+#             data_strategy.draw(hpv_type_strategy),
+#         )
+#         for pid in last_exam_dates
+#     ]
 
-    last_exam_date = pd.Series(last_exam_dates, dtype="datetime64[ns]")
-    hpv_details_df = pd.DataFrame(hpv_results, columns=["PID", "hpvDate", "value"])
-    result = hpv_count_last_n_years(last_exam_date, hpv_details_df, hr_types, n)
+#     last_exam_date = pd.Series(last_exam_dates, dtype="datetime64[ns]")
+#     hpv_details_df = pd.DataFrame(hpv_results, columns=["PID", "hpvDate", "value"])
+#     result = hpv_count_last_n_years(last_exam_date, hpv_details_df, hr_types, n)
 
-    for pid, count in result.items():
-        assert count == len(
-            [
-                id
-                for (id, date, type) in hpv_results
-                if id == pid
-                and date >= last_exam_dates[pid] - timedelta(days=n * 365)
-                and type in hr_types
-            ]
-        ), "Count of HPV types should match expected value"
+#     for pid, count in result.items():
+#         assert count == len(
+#             [
+#                 id
+#                 for (id, date, type) in hpv_results
+#                 if id == pid
+#                 and date >= last_exam_dates[pid] - timedelta(days=n * 365)
+#                 and type in hr_types
+#             ]
+#         ), "Count of HPV types should match expected value"
