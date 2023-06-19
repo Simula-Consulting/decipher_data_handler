@@ -190,6 +190,7 @@ def test_person_stats_w_features():
     logger.debug(f"Person df columns: {list(person_df.columns)}")
 
     expected_columns = {
+        # Base columns
         "age_min",
         "age_max",
         "age_mean",
@@ -197,10 +198,18 @@ def test_person_stats_w_features():
         "risk_max",
         "risk_mean",
         "FOEDT",
-        "has_positive",
-        "has_negative",
-        "has_hr",
-        "has_hr_2",
+        # Feature columns
+        "count_positive",
+        "count_negative",
+        "number_of_screenings",
+        "age_last_exam",
+        "hr_count",
+        "lr_count",
+        "age_first_hr",
+        "age_first_lr",
+        "age_first_positive",
+        "age_first_negative",
+        "hr_count_last_5_years",
     }
     assert set(person_df.columns) == expected_columns
 

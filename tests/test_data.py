@@ -46,7 +46,7 @@ def test_get_feature_data(data_manager: DataManager, min_non_hpv_exams: int):
         int(0.7 * len(data_manager.person_df.index)),
         replace=False,
     )
-    columns = ["has_positive", "has_hr"]
+    columns = ["count_positive", "hr_count"]
     features = data_manager.get_feature_data(pids=pids, columns=columns)
 
     assert set(features["PID"]) == set(pids)
@@ -148,14 +148,14 @@ def test_metadata(data_manager: DataManager, min_number_of_screenings: int, tmp_
     "filter_",
     [
         OperatorFilter("age_min", operator=operator.lt, value=timedelta(days=365 * 50)),
-        TrueFields(["has_hr"]),
-        TrueFields(["has_hr", "has_positive"]),
+        TrueFields(["hr_count"]),
+        TrueFields(["hr_count", "count_positive"]),
         CombinePersonFilter(
             [
                 OperatorFilter(
                     "age_min", operator=operator.lt, value=timedelta(days=365 * 50)
                 ),
-                TrueFields(["has_hr"]),
+                TrueFields(["hr_count"]),
             ]
         ),
     ],
@@ -174,8 +174,8 @@ def test_filter(data_manager: DataManager, filter_: PersonFilter):
                     "age_min", operator=operator.lt, value=timedelta(days=365 * 50)
                 ),
                 OperatorFilter("risk_min", operator=operator.gt, value=1),
-                TrueFields(["has_hr"]),
-                TrueFields(["has_hr", "has_positive"]),
+                TrueFields(["hr_count"]),
+                TrueFields(["hr_count", "count_positive"]),
                 AtLeastNNonHPV(2),
                 AtLeastNNonHPV(4),
             ]

@@ -271,8 +271,8 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         """Construct and return a DataFrame with a variety of HPV related features.
 
         The features include:
-        - 'has_positive': Count of positive HPV results per PID.
-        - 'has_negative': Count of negative HPV results per PID.
+        - 'count_positive': Count of positive HPV results per PID.
+        - 'count_negative': Count of negative HPV results per PID.
         - 'number_of_screenings': Count of screenings per PID.
         - 'age_last_exam': Age at last exam per PID.
         - 'hr_count': Count of high-risk HPV types per PID.
@@ -281,7 +281,7 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         - 'age_first_lr': Age at first detection of low-risk HPV types per PID.
         - 'age_first_positive': Age at first positive HPV result per PID.
         - 'age_first_negative': Age at first negative HPV result per PID.
-        - 'hr_count_last_5': Count of high-risk HPV types in the last 5 years per PID.
+        - 'hr_count_last_5_years': Count of high-risk HPV types in the last 5 years per PID.
 
         Arguments:
           - exams_df - Should have 'PID', 'risk', 'age' and 'exam_diagnosis' fields.
