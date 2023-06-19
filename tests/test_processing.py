@@ -205,6 +205,23 @@ def test_person_stats_w_features():
     }
     assert set(person_df.columns) == expected_columns
 
+    int_features = [
+        "count_positive",
+        "count_negative",
+        "number_of_screenings",
+        "count_positive_last_5_years",
+        "count_negative_last_5_years",
+    ]
+    float_features = [
+        "age_last_exam",
+        "age_first_positive",
+        "age_first_negative",
+    ]
+    for feature in int_features:
+        assert person_df[feature].dtype == "int"
+    for feature in float_features:
+        assert person_df[feature].dtype == "float"
+
 
 def test_hpv_results():
     raw = read_raw_df(test_data_screening)

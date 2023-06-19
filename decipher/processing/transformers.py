@@ -195,6 +195,10 @@ class RiskAdder(BaseEstimator, PandasTransformerMixin):
         return X
 
 
+def timedelta_to_years(timedeltas: pd.Series) -> pd.Series:
+    return timedeltas.apply(lambda x: x.days / 365)
+
+
 class PersonStats(BaseEstimator, PandasTransformerMixin):
     """Take an exam DF, and generate stats per person"""
 
@@ -258,10 +262,12 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
             .value_counts()
             .reindex(feature_df.index, fill_value=0)
         )
-        feature_df["number_of_screenings"] = exams_df.dropna(subset=["risk"])[
-            "PID"
-        ].value_counts()
-        feature_df["age_last_exam"] = person_df["age_max"]
+        feature_df["number_of_screenings"] = (
+            exams_df.dropna(subset=["risk"])["PID"]
+            .value_counts()
+            .reindex(feature_df.index, fill_value=0)
+        )
+        feature_df["age_last_exam"] = timedelta_to_years(person_df["age_max"])
         birth_date = person_df["FOEDT"]
         feature_df["age_first_positive"] = self.datetime_to_age(
             self.base_df.query("hpvResultat == 'positiv'")
@@ -284,14 +290,14 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
             ),
             times_of_last_exam,
             five_years,
-        )
+        ).reindex(feature_df.index, fill_value=0)
         feature_df["count_negative_last_5_years"] = self.count_in_time_window(
             self.base_df.query("hpvResultat == 'negativ'")[["hpvDate", "PID"]].rename(
                 columns={"hpvDate": "time"}
             ),
             times_of_last_exam,
             five_years,
-        )
+        ).reindex(feature_df.index, fill_value=0)
 
         return feature_df
 
@@ -309,7 +315,7 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         Returns:
             Series with the ages, as year in float.
         """
-        return (times - birth_dates).apply(lambda x: x.days / 365)
+        return timedelta_to_years(times - birth_dates)
 
     @staticmethod
     def count_in_time_window(
