@@ -1,6 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -195,53 +195,11 @@ class RiskAdder(BaseEstimator, PandasTransformerMixin):
         return X
 
 
-def hpv_count_last_n_years(
-    last_exam_date: pd.Series,
-    hpv_details_df: pd.DataFrame,
-    hr_types: list[str | int],
-    n: int = 5,
-) -> pd.Series:
-    """Count the number of high risk HPV types in the last 5 years before the last_exam_date.
-
-    Args:
-        last_exam_date: Series with the last exam date for each person (PID as index)
-        hpv_details_df: DataFrame with the HPV details. Must have the columns "PID", "hpvDate" and "value"
-        hr_types: List of high risk HPV types
-    """
-    if not hpv_details_df["PID"].isin(last_exam_date.index).all():
-        raise ValueError("Some PIDs from hpv_details are not in last_exam_dates")
-    n_years = timedelta(days=n * 365)
-    mask = hpv_details_df["hpvDate"] >= hpv_details_df["PID"].map(last_exam_date - n_years)  # type: ignore[operator]
-    return hpv_details_df[mask & hpv_details_df["value"].isin(hr_types)][
-        "PID"
-    ].value_counts()
-
-
 class PersonStats(BaseEstimator, PandasTransformerMixin):
     """Take an exam DF, and generate stats per person"""
 
     def __init__(self, base_df: pd.DataFrame | None = None) -> None:
         self.base_df = base_df
-        self.high_risk_hpv_types: list[str | int] = [
-            16,
-            8,
-            45,
-            31,
-            33,
-            35,
-            52,
-            58,
-            39,
-            51,
-            56,
-            59,
-            68,
-            "HR",
-            "HF",
-            "HD",
-            "HE",
-        ]
-        self.low_risk_hpv_types: list[str | int] = [11, 6]
 
     def fit(self, X: pd.DataFrame, y=None):
         CleanData(
@@ -255,6 +213,7 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        # TODO: Should HPV results be included in the min/max/mean of the age?
         person_df = X.groupby("PID")[["age", "risk"]].agg(["min", "max", "mean"])
         person_df.columns = [
             "_".join(column) for column in person_df.columns
@@ -271,17 +230,14 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         """Construct and return a DataFrame with a variety of HPV related features.
 
         The features include:
-        - 'has_positive': Count of positive HPV results per PID.
-        - 'has_negative': Count of negative HPV results per PID.
-        - 'number_of_screenings': Count of screenings per PID.
-        - 'age_last_exam': Age at last exam per PID.
-        - 'hr_count': Count of high-risk HPV types per PID.
-        - 'lr_count': Count of low-risk HPV types per PID.
-        - 'age_first_hr': Age at first detection of high-risk HPV types per PID.
-        - 'age_first_lr': Age at first detection of low-risk HPV types per PID.
-        - 'age_first_positive': Age at first positive HPV result per PID.
-        - 'age_first_negative': Age at first negative HPV result per PID.
-        - 'hr_count_last_5': Count of high-risk HPV types in the last 5 years per PID.
+        - 'count_positive': Count of positive HPV results.
+        - 'count_negative': Count of negative HPV results.
+        - 'number_of_screenings': Count of screenings.
+        - 'age_last_exam': Age at last exam.
+        - 'age_first_positive': Age at first positive HPV result.
+        - 'age_first_negative': Age at first negative HPV result.
+        - 'count_positive_last_5_years': Count of positive HPV results in the last 5 years before the last exam.
+        - 'count_negative_last_5_years': Count of negative HPV results in the last 5 years before the last exam.
 
         Arguments:
           - exams_df - Should have 'PID', 'risk', 'age' and 'exam_diagnosis' fields.
@@ -289,77 +245,99 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         """
         if self.base_df is None:
             raise ValueError()
-        hpv_details_df: pd.DataFrame = HPVResults().fit_transform(self.base_df)
 
         feature_df = pd.DataFrame(index=self.base_df["PID"].unique())
 
-        def _count_where_result_match(match: str, field_to_query: str = "hpvResultat"):
-            # MyPy does not infer the correct type of self.base_df inside the closure
-            # even though we have a guard above.
-            counts = (
-                cast(pd.DataFrame, self.base_df)
-                .query(f"{field_to_query} == '{match}'")["PID"]
-                .value_counts()
-            )
-            return counts
-
-        def age_first_field_match(match: str, field_to_query: str = "exam_diagnosis"):
-            ages = (
-                exams_df.query(f"{field_to_query} == '{match}'")
-                .groupby("PID")["age"]
-                .agg("min")
-                .apply(lambda x: x.days / 365)
-            )
-            return ages
-
-        def _hpv_type_counts(hr_types: list[str | int]):
-            """Get pid-counts for hr_types"""
-            pid_counts = hpv_details_df[hpv_details_df["value"].isin(hr_types)][
-                "PID"
-            ].value_counts()
-            return pid_counts
-
-        def _age_first_hr(
-            hr_types: list[str | int],
-        ):
-            """Get pid-age for hr_types"""
-            dates = (
-                hpv_details_df[hpv_details_df["value"].isin(hr_types)]
-                .groupby("PID")["hpvDate"]
-                .agg("min")
-            )
-            ages = (dates - person_df["FOEDT"]).apply(lambda x: x.days / 365)
-            return ages
-
-        feature_df["count_positive"] = _count_where_result_match(
-            match="positiv"
-        ).reindex(feature_df.index, fill_value=0)
-        feature_df["count_negative"] = _count_where_result_match(
-            match="negativ"
-        ).reindex(feature_df.index, fill_value=0)
+        feature_df["count_positive"] = (
+            self.base_df.query("hpvResultat == 'positiv'")["PID"]
+            .value_counts()
+            .reindex(feature_df.index, fill_value=0)
+        )
+        feature_df["count_negative"] = (
+            self.base_df.query("hpvResultat == 'negativ'")["PID"]
+            .value_counts()
+            .reindex(feature_df.index, fill_value=0)
+        )
         feature_df["number_of_screenings"] = exams_df.dropna(subset=["risk"])[
             "PID"
         ].value_counts()
-        feature_df["age_last_exam"] = (
-            exams_df.groupby("PID")["age"].agg("max").apply(lambda x: x.days / 365)
+        feature_df["age_last_exam"] = person_df["age_max"]
+        birth_date = person_df["FOEDT"]
+        feature_df["age_first_positive"] = self.datetime_to_age(
+            self.base_df.query("hpvResultat == 'positiv'")
+            .groupby("PID")["FOEDT"]
+            .agg("min"),
+            birth_date,
         )
-        feature_df["hr_count"] = _hpv_type_counts(
-            hr_types=self.high_risk_hpv_types
-        ).reindex(feature_df.index, fill_value=0)
-        feature_df["lr_count"] = _hpv_type_counts(
-            hr_types=self.low_risk_hpv_types
-        ).reindex(feature_df.index, fill_value=0)
-        feature_df["age_first_hr"] = _age_first_hr(hr_types=self.high_risk_hpv_types)
-        feature_df["age_first_lr"] = _age_first_hr(hr_types=self.low_risk_hpv_types)
-        feature_df["age_first_positive"] = age_first_field_match(match="positiv")
-        feature_df["age_first_negative"] = age_first_field_match(match="negativ")
-        feature_df["hr_count_last_5_years"] = hpv_count_last_n_years(
-            last_exam_date=person_df["age_max"] + person_df["FOEDT"],
-            hpv_details_df=hpv_details_df,
-            hr_types=self.high_risk_hpv_types,
-        ).reindex(feature_df.index, fill_value=0)
+        feature_df["age_first_negative"] = self.datetime_to_age(
+            self.base_df.query("hpvResultat == 'negativ'")
+            .groupby("PID")["FOEDT"]
+            .agg("min"),
+            birth_date,
+        )
+
+        times_of_last_exam = person_df["age_max"] + person_df["FOEDT"]
+        five_years = timedelta(days=5 * 365)
+        feature_df["count_positive_last_5_years"] = self.count_in_time_window(
+            self.base_df.query("hpvResultat == 'positiv'")[["hpvDate", "PID"]].rename(
+                columns={"hpvDate": "time"}
+            ),
+            times_of_last_exam,
+            five_years,
+        )
+        feature_df["count_negative_last_5_years"] = self.count_in_time_window(
+            self.base_df.query("hpvResultat == 'negativ'")[["hpvDate", "PID"]].rename(
+                columns={"hpvDate": "time"}
+            ),
+            times_of_last_exam,
+            five_years,
+        )
 
         return feature_df
+
+    @staticmethod
+    def datetime_to_age(
+        times: pd.Series,
+        birth_dates: pd.Series,
+    ) -> pd.Series:
+        """Convert a series of datetimes to a series of ages, as year in float.
+
+        Args:
+            times: the times to convert
+            birth_dates: the birth dates to use for the conversion
+
+        Returns:
+            Series with the ages, as year in float.
+        """
+        return (times - birth_dates).apply(lambda x: x.days / 365)
+
+    @staticmethod
+    def count_in_time_window(
+        times: pd.DataFrame,
+        last_date: pd.Series,
+        time_window: timedelta,
+    ) -> pd.Series:
+        """Count the number of occurrences per PID inside a time window.
+
+        The time window is counted backwards from the last_date. I.e. if the last_date
+        is 2020-01-10, and the time_window is 5 days, then the time window is 2020-01-05
+        to 2020-01-10.
+
+        Args:
+            times: the times to count. Should have the columns "PID" and "time"
+            last_date: the last date for each person. PID as index.
+            time_window: the time window to count in, counted backwards from last_date
+
+        Returns:
+            Series with the counts per PID
+        """
+        if not times["PID"].isin(last_date.index).all():
+            raise ValueError("Some PIDs from times are not in last_dates")
+        start_times = times["PID"].map(last_date - time_window)  # type: ignore[operator]  # Series is type datetime, but this can't be typed.
+        end_times = times["PID"].map(last_date)
+        return times[times["time"].between(start_times, end_times)][
+            "PID"
+        ].value_counts()
 
 
 class HPVResults(BaseEstimator, PandasTransformerMixin):
