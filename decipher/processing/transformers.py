@@ -8,7 +8,7 @@ import pandas as pd
 from loguru import logger
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from decipher.exam_data import Diagnosis, ExamTypes, risk_mapping
+from decipher.exam_data import HPV_TEST_TYPE_NAMES, Diagnosis, ExamTypes, risk_mapping
 
 
 class PandasTransformerMixin(TransformerMixin):
@@ -349,6 +349,15 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
 class HPVResults(BaseEstimator, PandasTransformerMixin):
     """Take a raw DF, and generate HPV results
 
+    The resulting DF will have the following columns:
+    - PID
+    - exam_index: the index of the exam in the raw data
+    - hpvTesttype
+    - hpvDate
+    - variable: the genotype column of the raw data, i.e. hpv1Genotype, hpv2Genotype, etc.
+    - value: the genotype, i.e. 16, 18, HR, etc
+    - hpv_test_type_name: the name of the test type, i.e. "Cobas 4800 System".
+
     Warning:
       HPV negative and hpv non-conclusive are _not_ included!!!
     """
@@ -365,7 +374,7 @@ class HPVResults(BaseEstimator, PandasTransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        return (
+        hpv_df = (
             X.dropna(subset="hpvDate")
             .reset_index(names="exam_index")
             .melt(
@@ -373,7 +382,11 @@ class HPVResults(BaseEstimator, PandasTransformerMixin):
                 value_vars=self.hpv_genotype_columns,
             )
             .dropna(subset="value")
-        ).astype({"variable": "category", "value": "category"})
+        ).astype({"variable": "category", "value": "category", "hpvTesttype": "int"})
+        hpv_df["test_type_name"] = (
+            hpv_df["hpvTesttype"].map(HPV_TEST_TYPE_NAMES).astype("category")
+        )
+        return hpv_df
 
 
 class ObservationMatrix(BaseEstimator, PandasTransformerMixin):

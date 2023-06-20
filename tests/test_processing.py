@@ -10,6 +10,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis.extra.pandas import column, data_frames, range_indexes
 
+from decipher.exam_data import HPV_TEST_TYPE_NAMES
 from decipher.processing.pipeline import (
     get_base_pipeline,
     get_exam_pipeline,
@@ -227,6 +228,31 @@ def test_hpv_results():
     raw = read_raw_df(test_data_screening)
     hpv_df = HPVResults().fit_transform(raw)
     logger.debug(f"HPV DF:\n{hpv_df.head()}")
+
+    assert not hpv_df.isna().any().any()
+
+    genotype_columns = ["hpv1Genotype", "hpv2Genotype"]
+
+    # Check that the data corresponds with the raw data
+    for exam_index, results in hpv_df.groupby("exam_index"):
+        raw_row = raw.loc[exam_index]
+
+        assert set(results["value"]) == set(raw_row[genotype_columns].dropna())
+
+        def _matches(field: str) -> bool:
+            """Assert the field is unique within the group and matches the raw data"""
+            return (
+                results[field].nunique() == 1
+                and results[field].iloc[0] == raw_row[field]
+            )
+
+        for field in ("PID", "hpvTesttype", "hpvDate"):
+            assert _matches(field)
+
+    # Check that the test type names are correct
+    assert hpv_df["test_type_name"].equals(
+        hpv_df["hpvTesttype"].map(HPV_TEST_TYPE_NAMES).astype("category")
+    )
 
 
 def test_read_from_csv(tmp_path: Path):
