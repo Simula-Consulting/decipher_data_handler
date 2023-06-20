@@ -237,7 +237,7 @@ def test_hpv_results():
     for exam_index, results in hpv_df.groupby("exam_index"):
         raw_row = raw.loc[exam_index]
 
-        assert set(results["value"]) == set(raw_row[genotype_columns].dropna())
+        assert set(results["genotype"]) == set(raw_row[genotype_columns].dropna())
 
         def _matches(field: str) -> bool:
             """Assert the field is unique within the group and matches the raw data"""

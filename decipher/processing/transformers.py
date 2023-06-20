@@ -354,8 +354,8 @@ class HPVResults(BaseEstimator, PandasTransformerMixin):
     - exam_index: the index of the exam in the raw data
     - hpvTesttype
     - hpvDate
-    - variable: the genotype column of the raw data, i.e. hpv1Genotype, hpv2Genotype, etc.
-    - value: the genotype, i.e. 16, 18, HR, etc
+    - genotype_field: the genotype column of the raw data, i.e. hpv1Genotype, hpv2Genotype, etc.
+    - genotype: the genotype, i.e. 16, 18, HR, etc
     - hpv_test_type_name: the name of the test type, i.e. "Cobas 4800 System".
 
     Warning:
@@ -380,9 +380,13 @@ class HPVResults(BaseEstimator, PandasTransformerMixin):
             .melt(
                 id_vars=["PID", "exam_index", "hpvTesttype", "hpvDate"],
                 value_vars=self.hpv_genotype_columns,
+                var_name="genotype_field",
+                value_name="genotype",
             )
-            .dropna(subset="value")
-        ).astype({"variable": "category", "value": "category", "hpvTesttype": "int"})
+            .dropna(subset="genotype")
+        ).astype(
+            {"genotype_field": "category", "genotype": "category", "hpvTesttype": "int"}
+        )
         hpv_df["test_type_name"] = (
             hpv_df["hpvTesttype"].map(HPV_TEST_TYPE_NAMES).astype("category")
         )
