@@ -31,7 +31,7 @@ test_data_dob = test_data_base / "test_dob_data.csv"
 
 @pytest.fixture()
 def data_manager() -> DataManager:
-    return DataManager.read_from_csv(test_data_screening, test_data_dob)
+    return DataManager.read_from_csv(test_data_screening, test_data_dob, read_hpv=True)
 
 
 @pytest.mark.parametrize("min_non_hpv_exams", [0, 2, 3])
@@ -126,6 +126,11 @@ def test_parquet(
         )
     else:
         assert new_data_manager.screening_data is None
+    if data_manager.hpv_df is not None:
+        assert new_data_manager.hpv_df is not None
+        assert new_data_manager.hpv_df.equals(data_manager.hpv_df)
+    else:
+        assert new_data_manager.hpv_df is None
     assert data_manager.person_df.equals(new_data_manager.person_df)
     assert data_manager.exams_df.equals(new_data_manager.exams_df)
 

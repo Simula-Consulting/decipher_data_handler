@@ -14,6 +14,7 @@ from sklearn.pipeline import Pipeline
 from decipher.processing.pipeline import get_base_pipeline, read_raw_df
 from decipher.processing.transformers import (
     AgeAdder,
+    HPVResults,
     ObservationMatrix,
     PersonStats,
     RiskAdder,
@@ -217,16 +218,20 @@ class DataManager:
         self,
         person_df: pd.DataFrame,
         exams_df: pd.DataFrame,
+        hpv_df: pd.DataFrame | None = None,
         screening_data: pd.DataFrame | None = None,
         metadata: dict | None = None,
     ):
         self.screening_data = screening_data
         self.person_df = person_df
+        self.hpv_df = hpv_df
         self.exams_df = exams_df
         self.metadata = metadata or {"decipher_version": version("decipher")}
 
     @classmethod
-    def read_from_csv(cls, screening_path: Path, dob_path: Path):
+    def read_from_csv(
+        cls, screening_path: Path, dob_path: Path, read_hpv: bool = False
+    ):
         base_df = _get_base_df(screening_path, dob_path)
         logger.debug("Got base DF")
         exams = Pipeline(
@@ -238,11 +243,17 @@ class DataManager:
             verbose=True,
         ).fit_transform(base_df)
         logger.debug("Got exams DF")
+
         person_df: pd.DataFrame = PersonStats(base_df=base_df).fit_transform(exams)
         logger.debug("Got person DF")
+
+        hpv_df = HPVResults().fit_transform(base_df) if read_hpv else None
+        logger.debug("Got HPV DF")
+
         return DataManager(
             person_df=person_df,
             exams_df=exams,
+            hpv_df=hpv_df,
         )
 
     def save_to_parquet(
@@ -254,12 +265,21 @@ class DataManager:
             self.screening_data.to_parquet(
                 directory / "screening_data.parquet", engine=engine
             )
+        if self.hpv_df is not None:
+            self.hpv_df.to_parquet(directory / "hpv_df.parquet", engine=engine)
         self.person_df.to_parquet(directory / "person_df.parquet", engine=engine)
         self.exams_df.to_parquet(directory / "exams_df.parquet", engine=engine)
         with open(directory / "metadata.json", "w") as file:
             # We always want to store the decipher version, so if it is not
             # in the metadata, add it.
             json.dump({"decipher_version": version("decipher")} | self.metadata, file)
+
+    @staticmethod
+    def _read_if_exists(
+        path: Path, engine: _parquet_engine_types
+    ) -> pd.DataFrame | None:
+        """Read the parquet file at path if it exists, otherwise return None"""
+        return pd.read_parquet(path, engine=engine) if path.exists() else None
 
     @classmethod
     def from_parquet(
@@ -282,15 +302,16 @@ class DataManager:
                 )
             else:
                 logger.warning(message)
-        if (screening_file := directory / "screening_data.parquet").exists():
-            screening_data = pd.read_parquet(screening_file, engine=engine)
-        else:
-            screening_data = None
+        screening_data = cls._read_if_exists(
+            directory / "screening_data.parquet", engine
+        )
+        hpv_df = cls._read_if_exists(directory / "hpv_df.parquet", engine)
         person_df = pd.read_parquet(directory / "person_df.parquet", engine=engine)
         exams_df = pd.read_parquet(directory / "exams_df.parquet", engine=engine)
         return DataManager(
             person_df=person_df,
             exams_df=exams_df,
+            hpv_df=hpv_df,
             screening_data=screening_data,
             metadata=metadata,
         )
