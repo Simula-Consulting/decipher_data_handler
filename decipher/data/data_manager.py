@@ -214,6 +214,59 @@ class CombinePersonFilter(PersonFilter):
 
 
 class DataManager:
+    """DataManager is a class for managing and organizing the datasets.
+
+    DataManager provides methods to read data from CSV files, save and load DataFrames
+    as parquet files for improved performance, filter data, and get feature data.
+
+    Attributes:
+        person_df: DataFrame containing personal data.
+        exams_df: DataFrame containing data about exams.
+        hpv_df: DataFrame containing HPV results data. See `decipher.processing.transformers.HPVResults` for details. Default is None.
+        screening_data: DataFrame containing screening data. Default is None.
+        metadata: Dictionary containing metadata.
+
+    Examples:
+        *** Reading data from CSV files ***
+        ```python
+        from pathlib import Path
+        from decipher.data import DataManager
+
+        screening_data = Path(<screening data>)
+        dob_data = Path(<dob data>)
+
+        # Read in from CSV
+        data_manager = DataManager.read_from_csv(screening_data, dob_data)
+        ```
+
+         **Read and Write with Parquet**
+        ```
+        from pathlib import Path
+        from decipher.data import DataManager
+
+        screening_data = Path(<screening data>)
+        dob_data = Path(<dob data>)
+        parquet_dir = Path(<parquet dir>)
+
+        # Read in from CSV
+        data_manager = DataManager.read_from_csv(screening_data, dob_data)
+
+        # Store to Parquet
+        data_manager.save_to_parquet(parquet_dir, engine="pyarrow")
+
+        # Read from Parquet
+        # Will fail if `decipher` version does not match that of stored data
+        data_manager = DataManager.from_parquet(parquet_dir, engine="pyarrow")
+
+        # See metadata
+        data_manager.metadata
+        ```
+
+    Note:
+        It is strongly advised to read the CSV files once, and then store the DataManager
+        to parquet. This gives much faster read times.
+    """
+
     def __init__(
         self,
         person_df: pd.DataFrame,
