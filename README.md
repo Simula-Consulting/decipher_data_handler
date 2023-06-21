@@ -98,6 +98,73 @@ feature_matrix = data_manager.feature_data_as_coo_array(
 )
 ```
 
+### Recipes
+
+** Adding detailed HPV test type and result information to the `exams_df` **
+The `exams_df` of the `DataManger` only contains whether the HPV result was positive
+or not, and no specific information about the test type.
+This information is stored in `hpv_df` (which is only populated if `read_hpv` is set
+to `True` in `DataManager.read_from_csv`).
+
+In some cases, it is desirable to have this information in the `exams_df`, as new columns.
+We here do it in two 'steps' to more clearly show what is going on.
+
+```python
+def hpv_details_per_exam(hpv_df: pd.DataFrame) -> pd.DataFrame:
+    """Return a DataFrame with the HPV details per exam.
+
+    The index of the returned DataFrame is the exam_index. Note that this is
+    not the same as the index of the exams_df!"""
+
+    per_exam = hpv_df.groupby("exam_index")
+    if per_exam["hpvTesttype"].nunique().max() != 1:
+        raise ValueError("Not all exams have the same HPV test type!")
+
+    return pd.DataFrame(
+        {
+            "exam_detailed_type": per_exam["test_type_name"].first(),
+            "exam_detailed_results": per_exam["genotype"].apply(
+                lambda genotypes: ",".join(genotypes)
+            ),
+        }
+    )
+
+def add_hpv_detailed_information(
+    exams_df: pd.DataFrame, hpv_df: pd.DataFrame
+) -> pd.DataFrame:
+    """ "Add detailed exam type name and results to exams_df"""
+    # Find the exam_index -> exams_df.index map
+    # exam_index is not unique in exams_df, because one exam may give
+    # cyt, hist, and HPV results
+    # Therefore, we find the indices where there is an HPV test
+    hpv_indices = exams_df.query("exam_type == 'HPV'")["index"]
+    mapping = pd.Series(data=hpv_indices.index, index=hpv_indices.values)
+
+    hpv_details = hpv_details_per_exam(hpv_df)
+    hpv_details.index = hpv_details.index.map(mapping)
+
+    # TODO: this will give nan on the hist and cyt rows
+    exams_df = exams_df.join(hpv_details)
+
+    # Set the Cytology and Histology results
+    def _fill(base_series: pd.Series, fill_series: pd.Series) -> pd.Series:
+        """Fill base series with fill series where base series is nan. Handles category data."""
+        return base_series.astype("string").fillna(fill_series.astype("string"))
+
+    exams_df["exam_detailed_type"] = _fill(
+        exams_df["exam_detailed_type"], exams_df["exam_type"]
+    )
+    exams_df["exam_detailed_results"] = _fill(
+        exams_df["exam_detailed_results"], exams_df["exam_diagnosis"]
+    )
+
+    return exams_df
+
+
+# Assuming the DataManger has hpv_df
+data_manager.exams_df = add_hpv_detailed_information(data_manager.exams_df, data_manager.hpv_df)
+```
+
 ## Install
 
 ## Parquet support

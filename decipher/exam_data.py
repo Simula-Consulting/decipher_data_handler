@@ -118,3 +118,24 @@ risk_mapping = {
 assert set(risk_mapping.keys()) == set(Diagnosis), set(risk_mapping.keys()) ^ set(
     Diagnosis
 )
+
+HPV_TEST_TYPE_NAMES = {
+    1: "HCII",
+    2: "HCIII",
+    3: "PreTect HPV-Proofer",
+    4: "Amplicor",
+    5: "PCR-primer",
+    6: "Real time PCR",
+    7: "Ventana Inform HPV (ISH)",
+    8: "ISH andre",
+    9: "PAP 13 Tele-lab",
+    10: "Paptype13 realtime",
+    11: "Cobas 4800 System",
+    12: "Abbott RealTime High Risk HPV",
+    13: "BD Onclarity HPV Assay",
+    14: "Inno Lipa",
+    15: "(Ukjent)",
+    16: "Abbot Alinity",
+    17: "Cobas 6800",
+}
+"""Mapping from HPV test type code to long form name."""
