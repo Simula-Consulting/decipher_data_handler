@@ -179,7 +179,7 @@ def test_person_stats_w_features():
     )
     pipeline = get_exam_pipeline(base_pipeline=base_pipeline)
     base_df = base_pipeline.fit_transform(raw)
-    exams = pipeline.fit_transform(raw)
+    exams: pd.DataFrame = pipeline.fit_transform(raw)
 
     person_df = PersonStats(base_df=base_df).fit_transform(exams)
     logger.debug(f"Person df:\n {person_df}")
@@ -230,6 +230,12 @@ def test_person_stats_w_features():
     has_negative = person_df["count_negative"] != 0
     assert person_df.loc[has_negative, "age_first_negative"].min() > 0
     assert not person_df.loc[has_negative, "age_first_negative"].isna().any()
+
+    PID_to_last_exam = person_df["age_last_exam"].apply(
+        lambda x: timedelta(days=x * 365)
+    )
+    possible_wrong_exams = exams["age"] > exams["PID"].map(PID_to_last_exam)
+    assert (exams[possible_wrong_exams]["exam_type"] == "HPV").all()
 
 
 def test_hpv_results():

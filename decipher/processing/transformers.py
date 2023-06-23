@@ -267,7 +267,11 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
             .value_counts()
             .reindex(feature_df.index, fill_value=0)
         )
-        feature_df["age_last_exam"] = timedelta_to_years(person_df["age_max"])
+        # person_df.age_max contains the age of the last exam of the entire
+        # exams_df. This also includes HPV results, which we don't want.
+        feature_df["age_last_exam"] = timedelta_to_years(
+            exams_df.query("exam_type != 'HPV'").groupby("PID")["age"].agg("max")
+        )
         birth_date = person_df["FOEDT"]
         feature_df["age_first_positive"] = self.datetime_to_age(
             self.base_df.query("hpvResultat == 'positiv'")
