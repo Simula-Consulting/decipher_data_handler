@@ -226,6 +226,11 @@ class DataManager:
         screening_data: DataFrame containing screening data. Default is None.
         metadata: Dictionary containing metadata.
 
+    Warning:
+        hpv_df contains details about the HPV genotype results.
+        For tests without genotype results, there will be no entry in hpv_df.
+        _However_, the test may still be positive.
+
     Examples:
         *** Reading data from CSV files ***
         ```python

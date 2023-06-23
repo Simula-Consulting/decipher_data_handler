@@ -121,13 +121,17 @@ class ToExam(BaseEstimator, PandasTransformerMixin):
         exams = (
             X.reset_index()
             .melt(
-                id_vars="index",
+                id_vars=[
+                    "index",
+                    "hpvTesttype",
+                ],  # Keep hpvTesttype. We will remove it for cyt and hist results later.
                 value_vars=mapper.keys(),  # type: ignore[arg-type]
                 var_name="exam_type",
                 value_name="exam_date",
             )
-            .dropna()
+            .dropna(subset=["exam_date"])
             .astype({"exam_type": "category"})
+            .rename(columns={"hpvTesttype": "detailed_exam_type"})
         )
 
         # Join on result columns
@@ -149,6 +153,17 @@ class ToExam(BaseEstimator, PandasTransformerMixin):
             .apply(lambda diagnosis_string: Diagnosis(diagnosis_string))
             .astype("category")
         )
+
+        # Set detailed_exam_type for cyt and hist exams
+        not_hpv_result = exams["exam_type"] != ExamTypes.HPV
+        exams.loc[not_hpv_result, "detailed_exam_type"] = exams.loc[
+            not_hpv_result, "exam_type"
+        ].apply(lambda exam_type: exam_type.value)
+        # Map hpv type codes to names
+        exams.loc[~not_hpv_result, "detailed_exam_type"] = exams.loc[
+            ~not_hpv_result, "detailed_exam_type"
+        ].map(HPV_TEST_TYPE_NAMES)
+        exams["detailed_exam_type"] = exams["detailed_exam_type"].astype("category")
 
         return exams.join(X[self.fields_to_keep], on="index")
 

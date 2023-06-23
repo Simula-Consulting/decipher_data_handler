@@ -19,7 +19,12 @@ from decipher.processing.pipeline import (
     read_raw_df,
     write_to_csv,
 )
-from decipher.processing.transformers import HPVResults, ObservationMatrix, PersonStats
+from decipher.processing.transformers import (
+    HPVResults,
+    ObservationMatrix,
+    PersonStats,
+    ToExam,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +46,21 @@ def test_base_pipeline():
     base_pipeline = get_base_pipeline(
         birthday_file=test_data_dob, drop_missing_birthday=True
     )
+
+
+def test_to_exam():
+    base_df = get_base_pipeline(
+        test_data_dob, drop_missing_birthday=True
+    ).fit_transform(read_raw_df(test_data_screening))
+    exams = ToExam().fit_transform(base_df)
+    assert exams["detailed_exam_type"].notna().all()
+    assert exams["detailed_exam_type"].dtype == "category"
+
+    assert set(exams["exam_type"]) == {"HPV", "cytology", "histology"}
+    assert set(exams["detailed_exam_type"]) == set(HPV_TEST_TYPE_NAMES.values()) | {
+        "cytology",
+        "histology",
+    }
 
 
 def test_read_and_exam_pipeline():
