@@ -223,6 +223,14 @@ def test_person_stats_w_features():
     for feature in float_features:
         assert person_df[feature].dtype == "float"
 
+    has_positive = person_df["count_positive"] != 0
+    assert person_df.loc[has_positive, "age_first_positive"].min() > 0
+    assert not person_df.loc[has_positive, "age_first_positive"].isna().any()
+
+    has_negative = person_df["count_negative"] != 0
+    assert person_df.loc[has_negative, "age_first_negative"].min() > 0
+    assert not person_df.loc[has_negative, "age_first_negative"].isna().any()
+
 
 def test_hpv_results():
     raw = read_raw_df(test_data_screening)

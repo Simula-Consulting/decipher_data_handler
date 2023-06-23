@@ -271,13 +271,13 @@ class PersonStats(BaseEstimator, PandasTransformerMixin):
         birth_date = person_df["FOEDT"]
         feature_df["age_first_positive"] = self.datetime_to_age(
             self.base_df.query("hpvResultat == 'positiv'")
-            .groupby("PID")["FOEDT"]
+            .groupby("PID")["hpvDate"]
             .agg("min"),
             birth_date,
         )
         feature_df["age_first_negative"] = self.datetime_to_age(
             self.base_df.query("hpvResultat == 'negativ'")
-            .groupby("PID")["FOEDT"]
+            .groupby("PID")["hpvDate"]
             .agg("min"),
             birth_date,
         )
